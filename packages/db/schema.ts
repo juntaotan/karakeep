@@ -1055,6 +1055,41 @@ export const importStagingBookmarks = sqliteTable(
     ),
   ],
 );
+// collections for multiple images
+export const imageCollections = sqliteTable(
+  "imageCollections",
+  {
+    id: text("id")
+      .notNull()
+      .primaryKey()
+      .references(() => bookmarks.id, { onDelete: "cascade" }),
+    createdAt: createdAtField(),
+    modifiedAt: modifiedAtField(),
+  }
+)
+
+export const imageCollectionItems = sqliteTable(
+  "imageCollectionItems",
+  {
+    id: text("id")
+      .notNull()
+      .primaryKey()
+      .$defaultFn(() => createId()),
+    collectionId: text("collectionId")
+      .notNull()
+      .references(() => imageCollections.id, { onDelete: "cascade" }),
+    position: integer("position").notNull(),
+    bookmarkId: text("bookmarkId")
+      .notNull()
+      .references(() => bookmarks.id, { onDelete: "cascade" }),
+    addedAt: createdAtField(),
+  },
+  (ic) => [
+    index("imageCollectionItems_collectionId_position_idx").on(ic.collectionId, ic.position),
+    index("imageCollectionItems_bookmarkId_idx").on(ic.bookmarkId),
+    unique().on(ic.bookmarkId)
+  ]
+);
 
 // Relations
 
