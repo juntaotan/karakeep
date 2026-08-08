@@ -240,7 +240,12 @@ export const bookmarks = sqliteTable(
     summary: text("summary"),
     note: text("note"),
     type: text("type", {
-      enum: [BookmarkTypes.LINK, BookmarkTypes.TEXT, BookmarkTypes.ASSET, BookmarkTypes.COLLECTION],
+      enum: [
+        BookmarkTypes.LINK,
+        BookmarkTypes.TEXT,
+        BookmarkTypes.ASSET,
+        BookmarkTypes.COLLECTION,
+      ],
     }).notNull(),
     source: text("source", {
       enum: [
@@ -1056,17 +1061,14 @@ export const importStagingBookmarks = sqliteTable(
   ],
 );
 // collections for multiple images
-export const imageCollections = sqliteTable(
-  "imageCollections",
-  {
-    id: text("id")
-      .notNull()
-      .primaryKey()
-      .references(() => bookmarks.id, { onDelete: "cascade" }),
-    createdAt: createdAtField(),
-    modifiedAt: modifiedAtField(),
-  }
-)
+export const imageCollections = sqliteTable("imageCollections", {
+  id: text("id")
+    .notNull()
+    .primaryKey()
+    .references(() => bookmarks.id, { onDelete: "cascade" }),
+  createdAt: createdAtField(),
+  modifiedAt: modifiedAtField(),
+});
 
 export const imageCollectionItems = sqliteTable(
   "imageCollectionItems",
@@ -1082,13 +1084,15 @@ export const imageCollectionItems = sqliteTable(
     bookmarkId: text("bookmarkId")
       .notNull()
       .references(() => bookmarks.id, { onDelete: "cascade" }),
-    addedAt: createdAtField(),
+    addedAt: createdAtField("addedAt"),
   },
   (ic) => [
-    index("imageCollectionItems_collectionId_position_idx").on(ic.collectionId, ic.position),
-    index("imageCollectionItems_bookmarkId_idx").on(ic.bookmarkId),
-    unique().on(ic.bookmarkId)
-  ]
+    index("imageCollectionItems_collectionId_position_idx").on(
+      ic.collectionId,
+      ic.position,
+    ),
+    unique().on(ic.bookmarkId),
+  ],
 );
 
 // Relations
@@ -1383,7 +1387,7 @@ export const imageCollectionsRelations = relations(
   }),
 );
 
-export const itemsCollectionRelations = relations(
+export const imageCollectionItemsRelations = relations(
   imageCollectionItems,
   ({ one }) => ({
     collection: one(imageCollections, {
