@@ -240,7 +240,7 @@ export const bookmarks = sqliteTable(
     summary: text("summary"),
     note: text("note"),
     type: text("type", {
-      enum: [BookmarkTypes.LINK, BookmarkTypes.TEXT, BookmarkTypes.ASSET],
+      enum: [BookmarkTypes.LINK, BookmarkTypes.TEXT, BookmarkTypes.ASSET, BookmarkTypes.COLLECTION],
     }).notNull(),
     source: text("source", {
       enum: [

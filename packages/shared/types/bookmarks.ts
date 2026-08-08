@@ -21,6 +21,7 @@ export const enum BookmarkTypes {
   LINK = "link",
   TEXT = "text",
   ASSET = "asset",
+  COLLECTION = "collection",
   UNKNOWN = "unknown",
 }
 
