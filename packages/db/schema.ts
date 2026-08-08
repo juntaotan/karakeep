@@ -1370,3 +1370,29 @@ export const userReadingProgressRelations = relations(
     }),
   }),
 );
+
+export const imageCollectionsRelations = relations(
+  imageCollections,
+  ({ one, many }) => ({
+    bookmark: one(bookmarks, {
+      fields: [imageCollections.id],
+      references: [bookmarks.id],
+    }),
+
+    items: many(imageCollectionItems),
+  }),
+);
+
+export const itemsCollectionRelations = relations(
+  imageCollectionItems,
+  ({ one }) => ({
+    collection: one(imageCollections, {
+      fields: [imageCollectionItems.collectionId],
+      references: [imageCollections.id],
+    }),
+    bookmark: one(bookmarks, {
+      fields: [imageCollectionItems.bookmarkId],
+      references: [bookmarks.id],
+    }),
+  }),
+);
