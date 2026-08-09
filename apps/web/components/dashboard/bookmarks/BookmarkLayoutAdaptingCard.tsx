@@ -44,6 +44,7 @@ import BookmarkOwnerIcon from "./BookmarkOwnerIcon";
 import { ArchivedActionIcon, FavouritedActionIcon } from "./icons";
 import { NotePreview } from "./NotePreview";
 import TagList from "./TagList";
+import { useBookmarkMergeDrag } from "./BookmarkMergeDragContext";
 
 interface Props {
   bookmark: ZBookmark;
@@ -152,6 +153,7 @@ function DragHandle({
   className?: string;
 }) {
   const { isBulkEditEnabled } = useBulkActionsStore();
+  const { onBookmarkDragStart, onBookmarkDragEnd } = useBookmarkMergeDrag();
   const handleDragStart = useCallback(
     (e: React.DragEvent) => {
       e.stopPropagation();
@@ -183,16 +185,20 @@ function DragHandle({
       document.body.appendChild(pill);
       e.dataTransfer.setDragImage(pill, 0, 0);
       requestAnimationFrame(() => pill.remove());
+      onBookmarkDragStart(bookmark.id);
     },
-    [bookmark],
+    [bookmark, onBookmarkDragStart],
   );
-
+  const handleDragEnd = useCallback(() => {
+    onBookmarkDragEnd();
+  }, [onBookmarkDragEnd]);
   if (isBulkEditEnabled) return null;
 
   return (
     <div
       draggable
       onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
       className={cn(
         "absolute z-40 hidden cursor-grab rounded bg-background/70 p-0.5 opacity-0 shadow-sm transition-opacity duration-200 group-hover:opacity-100 [@media(pointer:fine)]:block",
         className,
