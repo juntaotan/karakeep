@@ -74,6 +74,55 @@ const BookmarkGridItem = memo(function BookmarkGridItem({
   );
 });
 
+type GalleryItem =
+  | {
+      type: "editor";
+      id: "editor";
+    }
+  | {
+      type: "bookmark";
+      id: string;
+      bookmark: ZBookmark;
+      bookmarkIndex: number;
+    };
+
+function createGalleryItems(
+  bookmarks: ZBookmark[],
+  showEditorCard: boolean,
+): GalleryItem[] {
+  const items: GalleryItem[] = bookmarks.map((bookmark, bookmarkIndex) => ({
+    type: "bookmark",
+    id: bookmark.id,
+    bookmark,
+    bookmarkIndex,
+  }));
+
+  if (showEditorCard) {
+    items.unshift({ type: "editor", id: "editor" });
+  }
+
+  return items;
+}
+
+function renderGalleryItem(item: GalleryItem) {
+  switch (item.type) {
+    case "editor":
+      return (
+        <StyledBookmarkCard key={item.id}>
+          <EditorCard />
+        </StyledBookmarkCard>
+      );
+    case "bookmark":
+      return (
+        <BookmarkGridItem
+          key={item.id}
+          bookmark={item.bookmark}
+          index={item.bookmarkIndex}
+        />
+      );
+  }
+}
+
 function getBreakpointConfig(userColumns: number) {
   const fullConfig = resolveConfig(tailwindConfig);
 
@@ -230,16 +279,8 @@ export default function BookmarksGrid({
     );
   }
 
-  const children = [
-    showEditorCard && (
-      <StyledBookmarkCard key={"editor"}>
-        <EditorCard />
-      </StyledBookmarkCard>
-    ),
-    ...bookmarks.map((bookmark, index) => (
-      <BookmarkGridItem key={bookmark.id} bookmark={bookmark} index={index} />
-    )),
-  ];
+  const galleryItems = createGalleryItems(bookmarks, showEditorCard);
+  const children = galleryItems.map(renderGalleryItem);
   return (
     <>
       {bookmarkLayoutSwitch(layout, {
