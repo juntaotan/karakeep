@@ -39,6 +39,7 @@ import SummarizeBookmarkArea from "../bookmarks/SummarizeBookmarkArea";
 import ActionBar from "./ActionBar";
 import { AssetContentSection } from "./AssetContentSection";
 import AttachmentBox from "./AttachmentBox";
+import { CollectionContentSection } from "./CollectionContentSection";
 import HighlightsBox from "./HighlightsBox";
 import LinkContentSection from "./LinkContentSection";
 import { NoteEditor } from "./NoteEditor";
@@ -175,6 +176,10 @@ export default function BookmarkPreview({
     }
     case BookmarkTypes.ASSET: {
       content = <AssetContentSection bookmark={bookmark} />;
+      break;
+    }
+    case BookmarkTypes.COLLECTION: {
+      content = <CollectionContentSection bookmark={bookmark} />;
       break;
     }
   }

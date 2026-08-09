@@ -1128,6 +1128,10 @@ export const bookmarkRelations = relations(bookmarks, ({ many, one }) => ({
     fields: [bookmarks.id],
     references: [bookmarkAssets.id],
   }),
+  collection: one(imageCollections, {
+    fields: [bookmarks.id],
+    references: [imageCollections.id],
+  }),
   tagsOnBookmarks: many(tagsOnBookmarks),
   bookmarksInLists: many(bookmarksInLists),
   assets: many(assets),

@@ -163,10 +163,24 @@ export const zBookmarkedAssetSchema = z.object({
 });
 export type ZBookmarkedAsset = z.infer<typeof zBookmarkedAssetSchema>;
 
+export const zImageCollectionItemSchema = z.object({
+  bookmarkId: z.string(),
+  assetId: z.string(),
+  position: z.number().int(),
+});
+
+export const zBookmarkedCollectionSchema = z.object({
+  type: z.literal(BookmarkTypes.COLLECTION),
+  items: z.array(zImageCollectionItemSchema),
+});
+
+export type ZBookmarkedCollection = z.infer<typeof zBookmarkedCollectionSchema>;
+
 export const zBookmarkContentSchema = z.discriminatedUnion("type", [
   zBookmarkedLinkSchema,
   zBookmarkedTextSchema,
   zBookmarkedAssetSchema,
+  zBookmarkedCollectionSchema,
   z.object({ type: z.literal(BookmarkTypes.UNKNOWN) }),
 ]);
 export type ZBookmarkContent = z.infer<typeof zBookmarkContentSchema>;
@@ -239,6 +253,17 @@ const zBookmarkTypeAssetSchema = zBareBookmarkSchema.extend(
 );
 export type ZBookmarkTypeAsset = z.infer<typeof zBookmarkTypeAssetSchema>;
 
+const zBookmarkTypeCollectionSchema = zBareBookmarkSchema.extend(
+  z.object({
+    tags: z.array(zBookmarkTagSchema),
+    content: zBookmarkedCollectionSchema,
+    assets: z.array(zAssetSchema),
+  }).shape,
+);
+export type ZBookmarkTypeCollection = z.infer<
+  typeof zBookmarkTypeCollectionSchema
+>;
+
 // POST /v1/bookmarks
 export const zNewBookmarkRequestSchema = z.intersection(
   z.object({
@@ -275,6 +300,10 @@ export const zNewBookmarkRequestSchema = z.intersection(
       assetId: z.string(),
       fileName: z.string().optional(),
       sourceUrl: z.string().optional(),
+    }),
+    z.object({
+      type: z.literal(BookmarkTypes.COLLECTION),
+      bookmarkIds: z.array(z.string()).min(1),
     }),
   ]),
 );
