@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import KeyboardShortcutsDialog from "@/components/dashboard/KeyboardShortcutsDialog";
 import NoBookmarksBanner from "@/components/dashboard/bookmarks/NoBookmarksBanner";
 import { ActionButton } from "@/components/ui/action-button";
@@ -22,8 +22,11 @@ import Masonry from "react-masonry-css";
 import resolveConfig from "tailwindcss/resolveConfig";
 
 import type { ZBookmark } from "@karakeep/shared/types/bookmarks";
+import { BookmarkTypes } from "@karakeep/shared/types/bookmarks";
 import { useBookmarkListContext } from "@karakeep/shared-react/hooks/bookmark-list-context";
 
+import type { BookmarkMergeDragContextValue } from "./BookmarkMergeDragContext";
+import { BookmarkMergeDragProvider } from "./BookmarkMergeDragContext";
 import BookmarkCard from "./BookmarkCard";
 import EditorCard from "./EditorCard";
 import UnknownCard from "./UnknownCard";
@@ -143,6 +146,13 @@ function useActiveGridColumns(userColumns: number) {
   return activeColumns;
 }
 
+function isMergeEligibleBookmark(bookmark: ZBookmark | undefined) {
+  return (
+    bookmark?.content.type === BookmarkTypes.ASSET &&
+    bookmark.content.assetType === "image"
+  );
+}
+
 export default function BookmarksGrid({
   bookmarks,
   hasNextPage = false,
@@ -174,6 +184,9 @@ export default function BookmarksGrid({
   );
   const { ref: loadMoreRef, inView: loadMoreButtonInView } = useInView();
 
+  const [activeSourceId, setActiveSourceId] = useState<string | null>(null);
+  const [activeTargetId, setActiveTargetId] = useState<string | null>(null);
+
   // For list/compact layouts, navigation is single-column
   const isListLayout = layout === "list" || layout === "compact";
   const navColumns = isListLayout ? 1 : activeGridColumns;
@@ -194,6 +207,102 @@ export default function BookmarksGrid({
     isFetchingNextPage,
     fetchNextPage,
   });
+
+  const findBookmarkById = useCallback(
+    (bookmarkId: string) =>
+      bookmarks.find((bookmark) => bookmark.id === bookmarkId),
+    [bookmarks],
+  );
+
+  const handleBookmarkDragStart = useCallback(
+    (bookmarkId: string) => {
+      const bookmark = findBookmarkById(bookmarkId);
+
+      if (!isMergeEligibleBookmark(bookmark)) {
+        setActiveSourceId(null);
+        return;
+      }
+
+      setActiveSourceId(bookmarkId);
+      setActiveTargetId(null);
+    },
+    [findBookmarkById],
+  );
+
+  const handleBookmarkDragEnd = useCallback(() => {
+    setActiveSourceId(null);
+    setActiveTargetId(null);
+  }, []);
+
+  const isValidMergeTarget = useCallback(
+    (bookmarkId: string) => {
+      if (!activeSourceId || activeSourceId === bookmarkId) {
+        return false;
+      }
+
+      const source = findBookmarkById(activeSourceId);
+      const target = findBookmarkById(bookmarkId);
+
+      return isMergeEligibleBookmark(source) && isMergeEligibleBookmark(target);
+    },
+    [activeSourceId, findBookmarkById],
+  );
+
+  const handleBookmarkTargetEnter = useCallback(
+    (bookmarkId: string) => {
+      if (isValidMergeTarget(bookmarkId)) {
+        setActiveTargetId(bookmarkId);
+      } else {
+        setActiveTargetId(null);
+      }
+    },
+    [isValidMergeTarget],
+  );
+
+  const handleBookmarkTargetLeave = useCallback((bookmarkId: string) => {
+    setActiveTargetId((currentTargetId) =>
+      currentTargetId === bookmarkId ? null : currentTargetId,
+    );
+  }, []);
+
+  const handleBookmarkDrop = useCallback(
+    (transferredSourceId: string, targetBookmarkId: string) => {
+      if (
+        transferredSourceId !== activeSourceId ||
+        !isValidMergeTarget(targetBookmarkId)
+      ) {
+        setActiveSourceId(null);
+        setActiveTargetId(null);
+        return;
+      }
+
+      setActiveSourceId(null);
+      setActiveTargetId(null);
+    },
+    [activeSourceId, isValidMergeTarget],
+  );
+  const bookmarkMergeDragContextValue = useMemo<BookmarkMergeDragContextValue>(
+    () => ({
+      activeSourceId,
+      activeTargetId,
+      onBookmarkDragStart: handleBookmarkDragStart,
+      onBookmarkDragEnd: handleBookmarkDragEnd,
+      isValidMergeTarget,
+      onBookmarkTargetEnter: handleBookmarkTargetEnter,
+      onBookmarkTargetLeave: handleBookmarkTargetLeave,
+      onBookmarkDrop: handleBookmarkDrop,
+    }),
+    [
+      activeSourceId,
+      activeTargetId,
+      handleBookmarkDragStart,
+      handleBookmarkDragEnd,
+      isValidMergeTarget,
+      handleBookmarkTargetEnter,
+      handleBookmarkTargetLeave,
+      handleBookmarkDrop,
+    ],
+  );
 
   useEffect(() => {
     setVisibleBookmarks(bookmarks);
@@ -240,71 +349,75 @@ export default function BookmarksGrid({
       <BookmarkGridItem key={bookmark.id} bookmark={bookmark} index={index} />
     )),
   ];
+
   return (
-    <>
-      {bookmarkLayoutSwitch(layout, {
-        masonry: (
-          <Masonry
-            className="-ml-4 flex w-auto"
-            columnClassName="pl-4"
-            breakpointCols={breakpointConfig}
-          >
-            {children}
-          </Masonry>
-        ),
-        grid: (
-          <Masonry
-            className="-ml-4 flex w-auto"
-            columnClassName="pl-4"
-            breakpointCols={breakpointConfig}
-          >
-            {children}
-          </Masonry>
-        ),
-        list: <div className="grid grid-cols-1">{children}</div>,
-        compact: <div className="grid grid-cols-1">{children}</div>,
-      })}
-      {hasNextPage && (
-        <div className="flex justify-center">
-          <ActionButton
-            ref={loadMoreRef}
-            ignoreDemoMode={true}
-            loading={isFetchingNextPage}
-            onClick={() => fetchNextPage()}
-            variant="ghost"
-          >
-            Load More
-          </ActionButton>
-        </div>
-      )}
+    <BookmarkMergeDragProvider value={bookmarkMergeDragContextValue}>
+      <>
+        {bookmarkLayoutSwitch(layout, {
+          masonry: (
+            <Masonry
+              className="-ml-4 flex w-auto"
+              columnClassName="pl-4"
+              breakpointCols={breakpointConfig}
+            >
+              {children}
+            </Masonry>
+          ),
+          grid: (
+            <Masonry
+              className="-ml-4 flex w-auto"
+              columnClassName="pl-4"
+              breakpointCols={breakpointConfig}
+            >
+              {children}
+            </Masonry>
+          ),
+          list: <div className="grid grid-cols-1">{children}</div>,
+          compact: <div className="grid grid-cols-1">{children}</div>,
+        })}
 
-      <KeyboardShortcutsDialog
-        open={helpDialogOpen}
-        setOpen={setHelpDialogOpen}
-      />
-
-      <ActionConfirmingDialog
-        open={deleteDialogOpen}
-        setOpen={setDeleteDialogOpen}
-        title={t("dialogs.bookmarks.delete_confirmation_title")}
-        description={
-          isBulkDelete
-            ? t("dialogs.bookmarks.bulk_delete_confirmation_description", {
-                count: deleteCount,
-              })
-            : t("dialogs.bookmarks.delete_confirmation_description")
-        }
-        actionButton={() => (
-          <ActionButton
-            type="button"
-            variant="destructive"
-            loading={isDeletePending}
-            onClick={confirmDelete}
-          >
-            {t("actions.delete")}
-          </ActionButton>
+        {hasNextPage && (
+          <div className="flex justify-center">
+            <ActionButton
+              ref={loadMoreRef}
+              ignoreDemoMode={true}
+              loading={isFetchingNextPage}
+              onClick={() => fetchNextPage()}
+              variant="ghost"
+            >
+              Load More
+            </ActionButton>
+          </div>
         )}
-      />
-    </>
+
+        <KeyboardShortcutsDialog
+          open={helpDialogOpen}
+          setOpen={setHelpDialogOpen}
+        />
+
+        <ActionConfirmingDialog
+          open={deleteDialogOpen}
+          setOpen={setDeleteDialogOpen}
+          title={t("dialogs.bookmarks.delete_confirmation_title")}
+          description={
+            isBulkDelete
+              ? t("dialogs.bookmarks.bulk_delete_confirmation_description", {
+                  count: deleteCount,
+                })
+              : t("dialogs.bookmarks.delete_confirmation_description")
+          }
+          actionButton={() => (
+            <ActionButton
+              type="button"
+              variant="destructive"
+              loading={isDeletePending}
+              onClick={confirmDelete}
+            >
+              {t("actions.delete")}
+            </ActionButton>
+          )}
+        />
+      </>
+    </BookmarkMergeDragProvider>
   );
 }
