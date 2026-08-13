@@ -50,6 +50,9 @@ export function CollectionContentSection({
   const { mutate: deleteItem, isPending: isDeleting } = useMutation(
     api.bookmarks.deleteImageCollectionItem.mutationOptions({
       onSuccess: () => {
+        toast({
+          description: "Image removed from collection",
+        });
         queryClient.invalidateQueries(
           api.bookmarks.getBookmark.queryFilter({ bookmarkId: bookmark.id }),
         );
