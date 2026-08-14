@@ -9,7 +9,6 @@ import CollectionCard from "./CollectionCard";
 import LinkCard from "./LinkCard";
 import TextCard from "./TextCard";
 import UnknownCard from "./UnknownCard";
-import VideoCard from "./VideoCard";
 
 export default function BookmarkCard({
   bookmark: initialData,
