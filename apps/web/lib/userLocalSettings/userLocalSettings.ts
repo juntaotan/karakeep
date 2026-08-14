@@ -31,8 +31,34 @@ async function readModifyWrite(
   });
 }
 
-export async function updateBookmarksLayout(layout: BookmarksLayoutTypes) {
-  await readModifyWrite(() => ({ bookmarkGridLayout: layout }));
+export async function updateBookmarksLayout(
+  layout: BookmarksLayoutTypes,
+  viewKey?: string,
+) {
+  await readModifyWrite((settings) => {
+    if (
+      !viewKey ||
+      viewKey.length > 256 ||
+      !viewKey.startsWith("/dashboard/")
+    ) {
+      return { bookmarkGridLayout: layout };
+    }
+
+    const bookmarkGridLayoutsByView = {
+      ...settings.bookmarkGridLayoutsByView,
+    };
+
+    // Keep the cookie bounded while retaining the most recently configured
+    // views. Re-inserting the current key moves it to the end of the object.
+    delete bookmarkGridLayoutsByView[viewKey];
+    bookmarkGridLayoutsByView[viewKey] = layout;
+    const viewKeys = Object.keys(bookmarkGridLayoutsByView);
+    for (const staleViewKey of viewKeys.slice(0, -40)) {
+      delete bookmarkGridLayoutsByView[staleViewKey];
+    }
+
+    return { bookmarkGridLayoutsByView };
+  });
 }
 
 export async function updateInterfaceLang(lang: string) {
