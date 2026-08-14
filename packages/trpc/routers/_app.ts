@@ -7,6 +7,7 @@ import { bookmarksAppRouter } from "./bookmarks";
 import { configAppRouter } from "./config";
 import { feedsAppRouter } from "./feeds";
 import { highlightsAppRouter } from "./highlights";
+import { imageOcrAppRouter } from "./imageOcr";
 import { importSessionsRouter } from "./importSessions";
 import { invitesAppRouter } from "./invites";
 import { listsAppRouter } from "./lists";
@@ -29,6 +30,7 @@ export const appRouter = router({
   feeds: feedsAppRouter,
   backups: backupsAppRouter,
   highlights: highlightsAppRouter,
+  imageOcr: imageOcrAppRouter,
   importSessions: importSessionsRouter,
   webhooks: webhooksAppRouter,
   assets: assetsAppRouter,

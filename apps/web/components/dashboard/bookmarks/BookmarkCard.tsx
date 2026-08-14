@@ -5,6 +5,7 @@ import { BookmarkTypes, ZBookmark } from "@karakeep/shared/types/bookmarks";
 import { getBookmarkRefreshInterval } from "@karakeep/shared/utils/bookmarkUtils";
 
 import AssetCard from "./AssetCard";
+import CollectionCard from "./CollectionCard";
 import LinkCard from "./LinkCard";
 import TextCard from "./TextCard";
 import UnknownCard from "./UnknownCard";
@@ -58,6 +59,14 @@ export default function BookmarkCard({
     case BookmarkTypes.ASSET:
       return (
         <AssetCard
+          className={className}
+          bookmarkIndex={bookmarkIndex}
+          bookmark={{ ...bookmark, content: bookmark.content }}
+        />
+      );
+    case BookmarkTypes.COLLECTION:
+      return (
+        <CollectionCard
           className={className}
           bookmarkIndex={bookmarkIndex}
           bookmark={{ ...bookmark, content: bookmark.content }}

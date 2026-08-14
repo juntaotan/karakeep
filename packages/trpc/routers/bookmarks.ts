@@ -2,6 +2,7 @@ import { experimental_trpcMiddleware, TRPCError } from "@trpc/server";
 import { and, eq, gt, inArray, like, lt, or } from "drizzle-orm";
 import { z } from "zod";
 
+import type { KarakeepDBTransaction } from "@karakeep/db";
 import {
   assets,
   AssetTypes,
@@ -11,6 +12,8 @@ import {
   bookmarkTags,
   bookmarkTexts,
   customPrompts,
+  imageCollectionItems,
+  imageCollections,
   tagsOnBookmarks,
   userReadingProgress,
   users,
@@ -90,6 +93,100 @@ const HYBRID_CANDIDATES_PER_SOURCE = MAX_NUM_BOOKMARKS_PER_PAGE;
  * `(1 + cosine) / 2`), so this drops anything below ~0.2 cosine similarity.
  */
 const SEMANTIC_SCORE_THRESHOLD = 0.6;
+
+function validateUploadedBookmarkAsset(uploadedAsset: Asset) {
+  uploadedAsset.ensureOwnership();
+
+  if (
+    !uploadedAsset.asset.contentType ||
+    !SUPPORTED_BOOKMARK_ASSET_TYPES.has(uploadedAsset.asset.contentType)
+  ) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: "Unsupported asset type",
+    });
+  }
+}
+
+async function createCollectionBookmarkContent({
+  tx,
+  ctx,
+  bookmarkId,
+  bookmarkIds,
+}: {
+  tx: KarakeepDBTransaction;
+  ctx: AuthedContext;
+  bookmarkId: string;
+  bookmarkIds: string[];
+}): Promise<ZBookmarkContent> {
+  const uniqueBookmarkIds = new Set(bookmarkIds);
+  if (uniqueBookmarkIds.size !== bookmarkIds.length) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: "Collection items must be unique",
+    });
+  }
+
+  const collectionItemRows = await tx
+    .select({
+      bookmarkId: bookmarks.id,
+      assetId: bookmarkAssets.assetId,
+    })
+    .from(bookmarks)
+    .innerJoin(bookmarkAssets, eq(bookmarkAssets.id, bookmarks.id))
+    .where(
+      and(
+        inArray(bookmarks.id, bookmarkIds),
+        eq(bookmarks.userId, ctx.user.id),
+        eq(bookmarks.type, BookmarkTypes.ASSET),
+        eq(bookmarkAssets.assetType, "image"),
+      ),
+    );
+
+  const itemsByBookmarkId = new Map(
+    collectionItemRows.map((item) => [item.bookmarkId, item]),
+  );
+
+  if (itemsByBookmarkId.size !== bookmarkIds.length) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message:
+        "Collection items must be image asset bookmarks owned by the user",
+    });
+  }
+
+  const orderedItems = bookmarkIds.map((itemBookmarkId) => {
+    const item = itemsByBookmarkId.get(itemBookmarkId);
+    if (!item) {
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message: "Collection item not found",
+      });
+    }
+    return item;
+  });
+
+  await tx.insert(imageCollections).values({
+    id: bookmarkId,
+  });
+
+  await tx.insert(imageCollectionItems).values(
+    orderedItems.map((item, index) => ({
+      collectionId: bookmarkId,
+      bookmarkId: item.bookmarkId,
+      position: index,
+    })),
+  );
+
+  return {
+    type: BookmarkTypes.COLLECTION,
+    items: orderedItems.map((item, index) => ({
+      bookmarkId: item.bookmarkId,
+      assetId: item.assetId,
+      position: index,
+    })),
+  };
+}
 
 export const ensureBookmarkOwnership = experimental_trpcMiddleware<{
   ctx: AuthedContext;
@@ -362,7 +459,7 @@ export const bookmarksAppRouter = router({
               .returning()
           )[0];
 
-          let content: ZBookmarkContent;
+          let content: ZBookmarkContent | undefined;
 
           switch (input.type) {
             case BookmarkTypes.LINK: {
@@ -428,18 +525,7 @@ export const bookmarksAppRouter = router({
                 })
                 .returning();
               const uploadedAsset = await Asset.fromId(ctx, input.assetId);
-              uploadedAsset.ensureOwnership();
-              if (
-                !uploadedAsset.asset.contentType ||
-                !SUPPORTED_BOOKMARK_ASSET_TYPES.has(
-                  uploadedAsset.asset.contentType,
-                )
-              ) {
-                throw new TRPCError({
-                  code: "BAD_REQUEST",
-                  message: "Unsupported asset type",
-                });
-              }
+              validateUploadedBookmarkAsset(uploadedAsset);
               await tx
                 .update(assets)
                 .set({
@@ -461,6 +547,22 @@ export const bookmarksAppRouter = router({
               };
               break;
             }
+            case BookmarkTypes.COLLECTION: {
+              content = await createCollectionBookmarkContent({
+                tx,
+                ctx,
+                bookmarkId: bookmark.id,
+                bookmarkIds: input.bookmarkIds,
+              });
+              break;
+            }
+          }
+
+          if (!content) {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: "Unsupported bookmark type",
+            });
           }
 
           return {
@@ -540,6 +642,9 @@ export const bookmarksAppRouter = router({
           );
           break;
         }
+        case BookmarkTypes.COLLECTION: {
+          break;
+        }
       }
 
       await Promise.all([
@@ -563,6 +668,74 @@ export const bookmarksAppRouter = router({
         ),
       ]);
       return bookmark;
+    }),
+
+  reorderImageCollectionItems: bookmarksProcedure
+    .input(
+      z.object({
+        bookmarkId: z.string(),
+        bookmarkIds: z.array(z.string()).min(1),
+      }),
+    )
+    .output(zBookmarkSchema)
+    .use(ensureBookmarkOwnership)
+    .mutation(async ({ input, ctx }) => {
+      const collection = await ctx.db.query.imageCollections.findFirst({
+        where: eq(imageCollections.id, input.bookmarkId),
+      });
+
+      if (!collection) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Bookmark is not an image collection",
+        });
+      }
+
+      const currentItems = await ctx.db.query.imageCollectionItems.findMany({
+        where: eq(imageCollectionItems.collectionId, input.bookmarkId),
+      });
+
+      const currentBookmarkIds = currentItems
+        .map((item) => item.bookmarkId)
+        .sort();
+      const requestedBookmarkIds = [...input.bookmarkIds].sort();
+
+      if (
+        currentBookmarkIds.length !== requestedBookmarkIds.length ||
+        currentBookmarkIds.some(
+          (bookmarkId, index) => bookmarkId !== requestedBookmarkIds[index],
+        )
+      ) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Bookmark ids must match the existing image collection",
+        });
+      }
+
+      await ctx.db.transaction(async (tx) => {
+        await Promise.all(
+          input.bookmarkIds.map((itemBookmarkId, index) =>
+            tx
+              .update(imageCollectionItems)
+              .set({ position: index })
+              .where(
+                and(
+                  eq(imageCollectionItems.collectionId, input.bookmarkId),
+                  eq(imageCollectionItems.bookmarkId, itemBookmarkId),
+                ),
+              ),
+          ),
+        );
+
+        await tx
+          .update(imageCollections)
+          .set({ modifiedAt: new Date() })
+          .where(eq(imageCollections.id, input.bookmarkId));
+      });
+
+      return (
+        await Bookmark.fromId(ctx, input.bookmarkId, false)
+      ).asZBookmark();
     }),
 
   updateBookmark: bookmarksProcedure
