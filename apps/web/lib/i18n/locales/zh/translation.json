@@ -1105,11 +1105,13 @@
     "semantic_placeholder": "描述你记忆中的内容…"
   },
   "dialogs": {
-    "bookmarks": {
-      "delete_confirmation_title": "删除书签？",
-      "delete_confirmation_description": "是否确定要删除此标签？",
-      "bulk_delete_confirmation_description": "您确定要删除 {{count}} 个书签吗？"
-    }
+   "bookmarks": {
+  "delete_confirmation_title": "删除书签？",
+  "delete_confirmation_description": "是否确定要删除此标签？",
+  "bulk_delete_confirmation_description": "您确定要删除 {{count}} 个书签吗？",
+  "merge_confirmation_title": "合并图片书签？",
+  "merge_confirmation_description": "将这些图片合并为一个多图片书签？"
+}
   },
   "highlights": {
     "no_highlights": "你目前没有高亮的地方。"
