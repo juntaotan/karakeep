@@ -261,6 +261,7 @@ export class Bookmark extends BareBookmark {
             return {
               bookmarkId: item.bookmarkId,
               assetId: item.bookmark.asset.assetId,
+              fileName: item.bookmark.asset.fileName,
               position: item.position,
             };
           }),
@@ -799,6 +800,7 @@ export class Bookmark extends BareBookmark {
           bookmarkId: imageCollectionItems.bookmarkId,
           position: imageCollectionItems.position,
           assetId: bookmarkAssets.assetId,
+          fileName: bookmarkAssets.fileName,
         })
         .from(imageCollectionItems)
         .innerJoin(bookmarks, eq(bookmarks.id, imageCollectionItems.bookmarkId))
@@ -830,6 +832,7 @@ export class Bookmark extends BareBookmark {
         ).map((item) => ({
           bookmarkId: item.bookmarkId,
           assetId: item.assetId,
+          fileName: item.fileName,
           position: item.position,
         }));
       });

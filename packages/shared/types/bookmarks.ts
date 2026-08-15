@@ -166,6 +166,7 @@ export type ZBookmarkedAsset = z.infer<typeof zBookmarkedAssetSchema>;
 export const zImageCollectionItemSchema = z.object({
   bookmarkId: z.string(),
   assetId: z.string(),
+  fileName: z.string().nullish(),
   position: z.number().int(),
 });
 

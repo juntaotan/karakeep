@@ -152,6 +152,10 @@ describe("Bookmark Routes", () => {
           secondImage.id,
           firstImage.id,
       ]);
+      expect(reordered.content.items.map((item) => item.fileName)).toEqual([
+          "two.png",
+          "one.png",
+      ]);
 
       const storedItems = await db.query.imageCollectionItems.findMany({
           where: eq(imageCollectionItems.collectionId, collection.id),
@@ -169,6 +173,9 @@ describe("Bookmark Routes", () => {
       assert(afterDelete.content.type === BookmarkTypes.COLLECTION);
       expect(afterDelete.content.items.map((item) => item.bookmarkId)).toEqual([
           secondImage.id,
+      ]);
+      expect(afterDelete.content.items.map((item) => item.fileName)).toEqual([
+          "two.png",
       ]);
 
       const storedItemsAfterDelete = await db.query.imageCollectionItems.findMany({
