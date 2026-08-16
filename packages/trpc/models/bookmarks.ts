@@ -256,6 +256,7 @@ export class Bookmark extends BareBookmark {
     if (bookmark.collection) {
       content = {
         type: BookmarkTypes.COLLECTION,
+        content: null,
         items: collection.items
           .sort((a, b) => a.position - b.position)
           .map((item) => {
@@ -706,6 +707,7 @@ export class Bookmark extends BareBookmark {
             content = {
               type: BookmarkTypes.COLLECTION,
               items: [],
+              content: null,
             };
           } else {
             content = {

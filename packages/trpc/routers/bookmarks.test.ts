@@ -4,6 +4,7 @@ import { assert, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   assets,
   AssetTypes,
+  bookmarkAssets,
   bookmarkLinks,
   bookmarks,
   imageCollectionItems,
@@ -118,13 +119,24 @@ describe("Bookmark Routes", () => {
       assetType: "image",
       assetId: "collection-asset-1",
       fileName: "one.png",
+      title: "First image",
     });
     const secondImage = await api.createBookmark({
       type: BookmarkTypes.ASSET,
       assetType: "image",
       assetId: "collection-asset-2",
       fileName: "two.png",
+      title: "Second image",
     });
+
+    await db
+      .update(bookmarkAssets)
+      .set({ content: "First image OCR" })
+      .where(eq(bookmarkAssets.id, firstImage.id));
+    await db
+      .update(bookmarkAssets)
+      .set({ content: "Second image OCR" })
+      .where(eq(bookmarkAssets.id, secondImage.id));
 
     const collection = await api.createBookmark({
       type: BookmarkTypes.COLLECTION,
@@ -152,6 +164,15 @@ describe("Bookmark Routes", () => {
       secondImage.id,
       firstImage.id,
     ]);
+
+    const collectionWithContent = await api.getBookmark({
+      bookmarkId: collection.id,
+      includeContent: true,
+    });
+    assert(collectionWithContent.content.type === BookmarkTypes.COLLECTION);
+    expect(collectionWithContent.content.content).toBe(
+      "Second image\nSecond image OCR\nFirst image\nFirst image OCR",
+    );
 
     const storedItems = await db.query.imageCollectionItems.findMany({
       where: eq(imageCollectionItems.collectionId, collection.id),

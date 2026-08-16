@@ -1167,27 +1167,42 @@ export const bookmarksAppRouter = router({
     .use(ensureBookmarkAccess)
     .query(async ({ input, ctx }) => {
       if (ctx.bookmark.type === BookmarkTypes.COLLECTION) {
-        const collectionImagesWithOcr = await ctx.db
-          .select({
-            bookmarkId: imageCollectionItems.bookmarkId,
-            assetId: bookmarkAssets.assetId,
-            position: imageCollectionItems.position,
-            content: bookmarkAssets.content,
-          })
-          .from(imageCollectionItems)
-          .innerJoin(
-            bookmarkAssets,
-            eq(bookmarkAssets.id, imageCollectionItems.bookmarkId),
-          )
-          .where(eq(imageCollectionItems.collectionId, input.bookmarkId))
-          .orderBy(asc(imageCollectionItems.position));
+        const collectionImagesWithOcr = input.includeContent
+          ? await ctx.db
+              .select({
+                title: bookmarks.title,
+                content: bookmarkAssets.content,
+              })
+              .from(imageCollectionItems)
+              .innerJoin(
+                bookmarks,
+                eq(bookmarks.id, imageCollectionItems.bookmarkId),
+              )
+              .innerJoin(
+                bookmarkAssets,
+                eq(bookmarkAssets.id, imageCollectionItems.bookmarkId),
+              )
+              .where(eq(imageCollectionItems.collectionId, input.bookmarkId))
+              .orderBy(asc(imageCollectionItems.position))
+          : [];
 
         const collectionBookmark = (
           await Bookmark.fromId(ctx, input.bookmarkId, input.includeContent)
         ).asZBookmark();
 
-        // TODO: Map collectionImagesWithOcr into the collection response schema.
-        void collectionImagesWithOcr;
+        if (collectionBookmark.content.type !== BookmarkTypes.COLLECTION) {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: "Bookmark type changed while loading collection content",
+          });
+        }
+
+        collectionBookmark.content.content = input.includeContent
+          ? collectionImagesWithOcr
+              .map(({ title, content }) => `${title ?? ""}\n${content ?? ""}`)
+              .join("\n")
+          : null;
+
         return collectionBookmark;
       }
 

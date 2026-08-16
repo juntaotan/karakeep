@@ -451,6 +451,10 @@
                         "position"
                       ]
                     }
+                  },
+                  "content": {
+                    "type": "string",
+                    "nullable": true
                   }
                 },
                 "required": [
