@@ -172,6 +172,7 @@ export const zImageCollectionItemSchema = z.object({
 export const zBookmarkedCollectionSchema = z.object({
   type: z.literal(BookmarkTypes.COLLECTION),
   items: z.array(zImageCollectionItemSchema),
+  content: z.string().nullish(),
 });
 
 export type ZBookmarkedCollection = z.infer<typeof zBookmarkedCollectionSchema>;
