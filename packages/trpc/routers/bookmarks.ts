@@ -1,5 +1,5 @@
 import { experimental_trpcMiddleware, TRPCError } from "@trpc/server";
-import { and, eq, gt, inArray, like, lt, or } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, like, lt, or } from "drizzle-orm";
 import { z } from "zod";
 
 import type { KarakeepDBTransaction } from "@karakeep/db";
@@ -738,87 +738,87 @@ export const bookmarksAppRouter = router({
       ).asZBookmark();
     }),
 
-    deleteImageCollectionItem: bookmarksProcedure
-        .input(
-            z.object({
-                bookmarkId: z.string(),
-                itemBookmarkId: z.string(),
-            }),
-        )
-        .output(zBookmarkSchema)
-        .use(ensureBookmarkOwnership)
-        .mutation(async ({ input, ctx }) => {
-            const collection = await ctx.db.query.imageCollections.findFirst({
-                where: eq(imageCollections.id, input.bookmarkId),
-            });
+  deleteImageCollectionItem: bookmarksProcedure
+    .input(
+      z.object({
+        bookmarkId: z.string(),
+        itemBookmarkId: z.string(),
+      }),
+    )
+    .output(zBookmarkSchema)
+    .use(ensureBookmarkOwnership)
+    .mutation(async ({ input, ctx }) => {
+      const collection = await ctx.db.query.imageCollections.findFirst({
+        where: eq(imageCollections.id, input.bookmarkId),
+      });
 
-            if (!collection) {
-                throw new TRPCError({
-                    code: "BAD_REQUEST",
-                    message: "Bookmark is not an image collection",
-                });
-            }
+      if (!collection) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Bookmark is not an image collection",
+        });
+      }
 
-            const currentItems = await ctx.db.query.imageCollectionItems.findMany({
-                where: eq(imageCollectionItems.collectionId, input.bookmarkId),
-            });
+      const currentItems = await ctx.db.query.imageCollectionItems.findMany({
+        where: eq(imageCollectionItems.collectionId, input.bookmarkId),
+      });
 
-            const itemToDelete = currentItems.find(
-                (item) => item.bookmarkId === input.itemBookmarkId,
-            );
+      const itemToDelete = currentItems.find(
+        (item) => item.bookmarkId === input.itemBookmarkId,
+      );
 
-            if (!itemToDelete) {
-                throw new TRPCError({
-                    code: "BAD_REQUEST",
-                    message: "Image is not in this collection",
-                });
-            }
+      if (!itemToDelete) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Image is not in this collection",
+        });
+      }
 
-            if (currentItems.length <= 1) {
-                throw new TRPCError({
-                    code: "BAD_REQUEST",
-                    message: "Cannot delete the last image in a collection",
-                });
-            }
+      if (currentItems.length <= 1) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Cannot delete the last image in a collection",
+        });
+      }
 
-            const remainingItems = currentItems
-                .filter((item) => item.bookmarkId !== input.itemBookmarkId)
-                .sort((a, b) => a.position - b.position);
+      const remainingItems = currentItems
+        .filter((item) => item.bookmarkId !== input.itemBookmarkId)
+        .sort((a, b) => a.position - b.position);
 
-            await ctx.db.transaction(async (tx) => {
-                await tx
-                    .delete(imageCollectionItems)
-                    .where(
-                        and(
-                            eq(imageCollectionItems.collectionId, input.bookmarkId),
-                            eq(imageCollectionItems.bookmarkId, input.itemBookmarkId),
-                        ),
-                    );
+      await ctx.db.transaction(async (tx) => {
+        await tx
+          .delete(imageCollectionItems)
+          .where(
+            and(
+              eq(imageCollectionItems.collectionId, input.bookmarkId),
+              eq(imageCollectionItems.bookmarkId, input.itemBookmarkId),
+            ),
+          );
 
-                await Promise.all(
-                    remainingItems.map((item, index) =>
-                        tx
-                            .update(imageCollectionItems)
-                            .set({ position: index })
-                            .where(
-                                and(
-                                    eq(imageCollectionItems.collectionId, input.bookmarkId),
-                                    eq(imageCollectionItems.bookmarkId, item.bookmarkId),
-                                ),
-                            ),
-                    ),
-                );
+        await Promise.all(
+          remainingItems.map((item, index) =>
+            tx
+              .update(imageCollectionItems)
+              .set({ position: index })
+              .where(
+                and(
+                  eq(imageCollectionItems.collectionId, input.bookmarkId),
+                  eq(imageCollectionItems.bookmarkId, item.bookmarkId),
+                ),
+              ),
+          ),
+        );
 
-                await tx
-                    .update(imageCollections)
-                    .set({ modifiedAt: new Date() })
-                    .where(eq(imageCollections.id, input.bookmarkId));
-            });
+        await tx
+          .update(imageCollections)
+          .set({ modifiedAt: new Date() })
+          .where(eq(imageCollections.id, input.bookmarkId));
+      });
 
-            return (
-                await Bookmark.fromId(ctx, input.bookmarkId, false)
-            ).asZBookmark();
-        }),
+      return (
+        await Bookmark.fromId(ctx, input.bookmarkId, false)
+      ).asZBookmark();
+    }),
 
   updateBookmark: bookmarksProcedure
     .input(zUpdateBookmarksRequestSchema)
@@ -1166,6 +1166,31 @@ export const bookmarksAppRouter = router({
     .output(zBookmarkSchema)
     .use(ensureBookmarkAccess)
     .query(async ({ input, ctx }) => {
+      if (ctx.bookmark.type === BookmarkTypes.COLLECTION) {
+        const collectionImagesWithOcr = await ctx.db
+          .select({
+            bookmarkId: imageCollectionItems.bookmarkId,
+            assetId: bookmarkAssets.assetId,
+            position: imageCollectionItems.position,
+            content: bookmarkAssets.content,
+          })
+          .from(imageCollectionItems)
+          .innerJoin(
+            bookmarkAssets,
+            eq(bookmarkAssets.id, imageCollectionItems.bookmarkId),
+          )
+          .where(eq(imageCollectionItems.collectionId, input.bookmarkId))
+          .orderBy(asc(imageCollectionItems.position));
+
+        const collectionBookmark = (
+          await Bookmark.fromId(ctx, input.bookmarkId, input.includeContent)
+        ).asZBookmark();
+
+        // TODO: Map collectionImagesWithOcr into the collection response schema.
+        void collectionImagesWithOcr;
+        return collectionBookmark;
+      }
+
       return (
         await Bookmark.fromId(ctx, input.bookmarkId, input.includeContent)
       ).asZBookmark();
