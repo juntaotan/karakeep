@@ -88,9 +88,16 @@ export function CollectionContentSection({
           <div key={item.bookmarkId} className="flex flex-col gap-2">
             {items.length > 1 && (
               <div className="flex items-center justify-between gap-2">
-                <span className="text-sm text-muted-foreground">
-                  {index + 1} / {items.length}
-                </span>
+                <div className="flex min-w-0 items-center gap-2 text-sm text-muted-foreground">
+                  <span className="shrink-0">
+                    {index + 1} / {items.length}
+                  </span>
+                  {item.fileName && (
+                    <span className="truncate" title={item.fileName}>
+                      {item.fileName}
+                    </span>
+                  )}
+                </div>
                 <div className="flex gap-2">
                   <Button
                     type="button"
