@@ -995,6 +995,13 @@
     "continue_button": "Continue",
     "failed_to_reorder_images": "Failed to reorder images",
     "collection_image": "Collection image {{index}}",
+    "image_removed_from_collection": "Image removed from collection",
+    "failed_to_delete_image": "Failed to delete image",
+    "move_image_up": "Move image up",
+    "move_image_down": "Move image down",
+    "delete_image": "Delete",
+    "remove_image_from_collection_title": "Remove image from collection?",
+    "remove_image_from_collection_description": "This removes the image from this collection. The original bookmark will not be deleted.",
     "tabs": {
       "content": "Content",
       "details": "Details"
