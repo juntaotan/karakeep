@@ -951,7 +951,14 @@
     "continue_reading_percent": "从上次结束的地方继续（{{percent}}%）",
     "continue_button": "继续",
     "failed_to_reorder_images": "重新排序图片失败",
-    "collection_image": "图片集合第 {{index}} 张"
+    "collection_image": "图片集合第 {{index}} 张",
+    "image_removed_from_collection": "已从图片集合中移除图片",
+    "failed_to_delete_image": "删除图片失败",
+    "move_image_up": "上移图片",
+    "move_image_down": "下移图片",
+    "delete_image": "删除",
+    "remove_image_from_collection_title": "从图片集合中移除这张图片？",
+    "remove_image_from_collection_description": "这会从当前集合中移除该图片，但不会删除原始书签。"
   },
   "editor": {
     "quickly_focus": "您可以按⌘ + E快速聚焦到此字段",
