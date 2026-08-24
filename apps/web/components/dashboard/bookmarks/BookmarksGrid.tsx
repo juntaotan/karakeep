@@ -22,15 +22,18 @@ import Masonry from "react-masonry-css";
 import resolveConfig from "tailwindcss/resolveConfig";
 
 import type { ZBookmark } from "@karakeep/shared/types/bookmarks";
-import { BookmarkTypes } from "@karakeep/shared/types/bookmarks";
-import { useBookmarkListContext } from "@karakeep/shared-react/hooks/bookmark-list-context";
 
+import { BookmarkTypes } from "@karakeep/shared/types/bookmarks";
+
+import { useBookmarkListContext } from "@karakeep/shared-react/hooks/bookmark-list-context";
+import { useCreateBookmarkWithPostHook } from "@karakeep/shared-react/hooks/bookmarks";
 import type { BookmarkMergeDragContextValue } from "./BookmarkMergeDragContext";
 import { BookmarkMergeDragProvider } from "./BookmarkMergeDragContext";
+
 import BookmarkCard from "./BookmarkCard";
 import EditorCard from "./EditorCard";
 import UnknownCard from "./UnknownCard";
-
+import { toast } from "@/components/ui/sonner";
 function StyledBookmarkCard({
   children,
   className,
@@ -145,7 +148,10 @@ function useActiveGridColumns(userColumns: number) {
 
   return activeColumns;
 }
-
+interface PendingBookmarkMerge {
+  sourceId: string;
+  targetId: string;
+}
 function isMergeEligibleBookmark(bookmark: ZBookmark | undefined) {
   return (
     bookmark?.content.type === BookmarkTypes.ASSET &&
@@ -167,6 +173,7 @@ export default function BookmarksGrid({
   fetchNextPage?: () => void;
 }) {
   const { t } = useTranslation();
+
   const layout = useBookmarkLayout();
   const gridColumns = useGridColumns();
   const activeGridColumns = useActiveGridColumns(gridColumns);
@@ -186,7 +193,23 @@ export default function BookmarksGrid({
 
   const [activeSourceId, setActiveSourceId] = useState<string | null>(null);
   const [activeTargetId, setActiveTargetId] = useState<string | null>(null);
-
+  // Keep the dropped bookmark pair while waiting for merge confirmation.
+  const [pendingMerge, setPendingMerge] = useState<PendingBookmarkMerge | null>(
+    null,
+  );
+  // Send the confirmed merge request and keep the dialog open if it fails.
+  const { mutate: createMergeCollection, isPending: isMergePending } =
+    useCreateBookmarkWithPostHook({
+      onSuccess: () => {
+        setPendingMerge(null);
+      },
+      onError: (error) => {
+        toast({
+          description: error.message,
+          variant: "destructive",
+        });
+      },
+    });
   // For list/compact layouts, navigation is single-column
   const isListLayout = layout === "list" || layout === "compact";
   const navColumns = isListLayout ? 1 : activeGridColumns;
@@ -275,12 +298,36 @@ export default function BookmarksGrid({
         setActiveTargetId(null);
         return;
       }
+      // Keep the valid bookmark pair for merge confirmation.
+      setPendingMerge({
+        sourceId: transferredSourceId,
+        targetId: targetBookmarkId,
+      });
 
       setActiveSourceId(null);
       setActiveTargetId(null);
     },
     [activeSourceId, isValidMergeTarget],
   );
+  // Clear the pending merge when the confirmation dialog closes.
+  const handleMergeDialogOpenChange = useCallback((open: boolean) => {
+    if (!open) {
+      setPendingMerge(null);
+    }
+  }, []);
+  // Create an image collection after the user confirms a valid bookmark merge.
+  const handleMergeConfirm = useCallback(() => {
+    if (!pendingMerge) {
+      return;
+    }
+
+    createMergeCollection({
+      type: BookmarkTypes.COLLECTION,
+      title: "2 images",
+      bookmarkIds: [pendingMerge.sourceId, pendingMerge.targetId],
+    });
+  }, [createMergeCollection, pendingMerge]);
+
   const bookmarkMergeDragContextValue = useMemo<BookmarkMergeDragContextValue>(
     () => ({
       activeSourceId,
@@ -394,7 +441,21 @@ export default function BookmarksGrid({
           open={helpDialogOpen}
           setOpen={setHelpDialogOpen}
         />
-
+        <ActionConfirmingDialog
+          open={!!pendingMerge}
+          setOpen={handleMergeDialogOpenChange}
+          title={t("dialogs.bookmarks.merge_confirmation_title")}
+          description={t("dialogs.bookmarks.merge_confirmation_description")}
+          actionButton={() => (
+            <ActionButton
+              type="button"
+              loading={isMergePending}
+              onClick={handleMergeConfirm}
+            >
+              {t("actions.merge")}
+            </ActionButton>
+          )}
+        />
         <ActionConfirmingDialog
           open={deleteDialogOpen}
           setOpen={setDeleteDialogOpen}
