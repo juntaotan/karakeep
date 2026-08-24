@@ -4,6 +4,7 @@ import { assert, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   assets,
   AssetTypes,
+  bookmarkAssets,
   bookmarkLinks,
   bookmarks,
   imageCollectionItems,
@@ -118,13 +119,24 @@ describe("Bookmark Routes", () => {
       assetType: "image",
       assetId: "collection-asset-1",
       fileName: "one.png",
+      title: "First image",
     });
     const secondImage = await api.createBookmark({
       type: BookmarkTypes.ASSET,
       assetType: "image",
       assetId: "collection-asset-2",
       fileName: "two.png",
+      title: "Second image",
     });
+
+    await db
+      .update(bookmarkAssets)
+      .set({ content: "First image OCR" })
+      .where(eq(bookmarkAssets.id, firstImage.id));
+    await db
+      .update(bookmarkAssets)
+      .set({ content: "Second image OCR" })
+      .where(eq(bookmarkAssets.id, secondImage.id));
 
     const collection = await api.createBookmark({
       type: BookmarkTypes.COLLECTION,
@@ -142,16 +154,45 @@ describe("Bookmark Routes", () => {
       "collection-asset-2",
     ]);
 
-    const reordered = await api.reorderImageCollectionItems({
-      bookmarkId: collection.id,
-      bookmarkIds: [secondImage.id, firstImage.id],
-    });
+      assert(reordered.content.type === BookmarkTypes.COLLECTION);
+      expect(reordered.content.items.map((item) => item.bookmarkId)).toEqual([
+          secondImage.id,
+          firstImage.id,
+      ]);
+      expect(reordered.content.items.map((item) => item.fileName)).toEqual([
+          "two.png",
+          "one.png",
+      ]);
 
-    assert(reordered.content.type === BookmarkTypes.COLLECTION);
-    expect(reordered.content.items.map((item) => item.bookmarkId)).toEqual([
-      secondImage.id,
-      firstImage.id,
-    ]);
+      const storedItems = await db.query.imageCollectionItems.findMany({
+          where: eq(imageCollectionItems.collectionId, collection.id),
+      });
+      expect(
+          storedItems
+              .sort((a, b) => a.position - b.position)
+              .map((item) => item.bookmarkId),
+      ).toEqual([secondImage.id, firstImage.id]);
+      const afterDelete = await api.deleteImageCollectionItem({
+          bookmarkId: collection.id,
+          itemBookmarkId: firstImage.id,
+      });
+
+      assert(afterDelete.content.type === BookmarkTypes.COLLECTION);
+      expect(afterDelete.content.items.map((item) => item.bookmarkId)).toEqual([
+          secondImage.id,
+      ]);
+      expect(afterDelete.content.items.map((item) => item.fileName)).toEqual([
+          "two.png",
+      ]);
+
+    const collectionWithContent = await api.getBookmark({
+      bookmarkId: collection.id,
+      includeContent: true,
+    });
+    assert(collectionWithContent.content.type === BookmarkTypes.COLLECTION);
+    expect(collectionWithContent.content.content).toBe(
+      "Second image\nSecond image OCR\nFirst image\nFirst image OCR",
+    );
 
     const storedItems = await db.query.imageCollectionItems.findMany({
       where: eq(imageCollectionItems.collectionId, collection.id),
@@ -161,6 +202,31 @@ describe("Bookmark Routes", () => {
         .sort((a, b) => a.position - b.position)
         .map((item) => item.bookmarkId),
     ).toEqual([secondImage.id, firstImage.id]);
+    const afterDelete = await api.deleteImageCollectionItem({
+      bookmarkId: collection.id,
+      itemBookmarkId: firstImage.id,
+    });
+
+    assert(afterDelete.content.type === BookmarkTypes.COLLECTION);
+    expect(afterDelete.content.items.map((item) => item.bookmarkId)).toEqual([
+      secondImage.id,
+    ]);
+
+    const storedItemsAfterDelete = await db.query.imageCollectionItems.findMany(
+      {
+        where: eq(imageCollectionItems.collectionId, collection.id),
+      },
+    );
+    expect(storedItemsAfterDelete).toHaveLength(1);
+    expect(storedItemsAfterDelete[0].bookmarkId).toBe(secondImage.id);
+    expect(storedItemsAfterDelete[0].position).toBe(0);
+
+    await expect(() =>
+      api.deleteImageCollectionItem({
+        bookmarkId: collection.id,
+        itemBookmarkId: secondImage.id,
+      }),
+    ).rejects.toThrow(/last image/i);
   });
 
   test<CustomTestContext>("get readable bookmark content as markdown or text", async ({

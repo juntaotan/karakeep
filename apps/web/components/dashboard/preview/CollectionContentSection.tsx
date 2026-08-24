@@ -2,12 +2,14 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import { ActionButton } from "@/components/ui/action-button";
+import ActionConfirmingDialog from "@/components/ui/action-confirming-dialog";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/sonner";
 import { useTranslation } from "@/lib/i18n/client";
 import { useTRPC } from "@karakeep/shared-react/trpc";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { ArrowDown, ArrowUp } from "lucide-react";
+import { ArrowDown, ArrowUp, Trash2 } from "lucide-react";
 
 import { BookmarkTypes, ZBookmark } from "@karakeep/shared/types/bookmarks";
 import { getAssetUrl } from "@karakeep/shared/utils/assetUtils";
@@ -28,7 +30,7 @@ export function CollectionContentSection({
   const api = useTRPC();
   const queryClient = useQueryClient();
 
-  const { mutate: reorderItems, isPending } = useMutation(
+  const { mutate: reorderItems, isPending: isReordering } = useMutation(
     api.bookmarks.reorderImageCollectionItems.mutationOptions({
       onSuccess: () => {
         queryClient.invalidateQueries(
@@ -39,6 +41,26 @@ export function CollectionContentSection({
       onError: () => {
         toast({
           description: t("preview.failed_to_reorder_images"),
+          variant: "destructive",
+        });
+      },
+    }),
+  );
+
+  const { mutate: deleteItem, isPending: isDeleting } = useMutation(
+    api.bookmarks.deleteImageCollectionItem.mutationOptions({
+      onSuccess: () => {
+        toast({
+          description: "Image removed from collection",
+        });
+        queryClient.invalidateQueries(
+          api.bookmarks.getBookmark.queryFilter({ bookmarkId: bookmark.id }),
+        );
+        queryClient.invalidateQueries(api.bookmarks.getBookmarks.pathFilter());
+      },
+      onError: (e) => {
+        toast({
+          description: e.message || "Failed to delete image",
           variant: "destructive",
         });
       },
@@ -66,15 +88,22 @@ export function CollectionContentSection({
           <div key={item.bookmarkId} className="flex flex-col gap-2">
             {items.length > 1 && (
               <div className="flex items-center justify-between gap-2">
-                <span className="text-sm text-muted-foreground">
-                  {index + 1} / {items.length}
-                </span>
+                <div className="flex min-w-0 items-center gap-2 text-sm text-muted-foreground">
+                  <span className="shrink-0">
+                    {index + 1} / {items.length}
+                  </span>
+                  {item.fileName && (
+                    <span className="truncate" title={item.fileName}>
+                      {item.fileName}
+                    </span>
+                  )}
+                </div>
                 <div className="flex gap-2">
                   <Button
                     type="button"
                     variant="outline"
                     size="icon"
-                    disabled={index === 0 || isPending}
+                    disabled={index === 0 || isReordering || isDeleting}
                     onClick={() => moveItem(index, index - 1)}
                     title="Move up"
                   >
@@ -84,12 +113,46 @@ export function CollectionContentSection({
                     type="button"
                     variant="outline"
                     size="icon"
-                    disabled={index === items.length - 1 || isPending}
+                    disabled={
+                      index === items.length - 1 || isReordering || isDeleting
+                    }
                     onClick={() => moveItem(index, index + 1)}
                     title="Move down"
                   >
                     <ArrowDown className="size-4" />
                   </Button>
+                  <ActionConfirmingDialog
+                    title="Remove image from collection?"
+                    description="This removes the image from this collection. The original bookmark will not be deleted."
+                    actionButton={(setDialogOpen) => (
+                      <ActionButton
+                        loading={isDeleting}
+                        variant="destructive"
+                        onClick={() =>
+                          deleteItem(
+                            {
+                              bookmarkId: bookmark.id,
+                              itemBookmarkId: item.bookmarkId,
+                            },
+                            { onSettled: () => setDialogOpen(false) },
+                          )
+                        }
+                      >
+                        <Trash2 className="mr-2 size-4" />
+                        Delete
+                      </ActionButton>
+                    )}
+                  >
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      disabled={items.length <= 1 || isReordering || isDeleting}
+                      title="Delete"
+                    >
+                      <Trash2 className="size-4" />
+                    </Button>
+                  </ActionConfirmingDialog>
                 </div>
               </div>
             )}

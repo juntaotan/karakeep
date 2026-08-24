@@ -166,12 +166,14 @@ export type ZBookmarkedAsset = z.infer<typeof zBookmarkedAssetSchema>;
 export const zImageCollectionItemSchema = z.object({
   bookmarkId: z.string(),
   assetId: z.string(),
+  fileName: z.string().nullish(),
   position: z.number().int(),
 });
 
 export const zBookmarkedCollectionSchema = z.object({
   type: z.literal(BookmarkTypes.COLLECTION),
   items: z.array(zImageCollectionItemSchema),
+  content: z.string().nullish(),
 });
 
 export type ZBookmarkedCollection = z.infer<typeof zBookmarkedCollectionSchema>;

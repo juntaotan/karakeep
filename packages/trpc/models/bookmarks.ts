@@ -110,6 +110,7 @@ export class BareBookmark {
   protected constructor(
     protected ctx: AuthedContext,
     private bareBookmark: ZBareBookmark,
+    private bookmarkType: ZBookmarkContent["type"],
   ) {}
 
   get id() {
@@ -122,6 +123,10 @@ export class BareBookmark {
 
   get userId() {
     return this.bareBookmark.userId;
+  }
+
+  get type() {
+    return this.bookmarkType;
   }
 
   static async bareFromId(ctx: AuthedContext, bookmarkId: string) {
@@ -143,7 +148,7 @@ export class BareBookmark {
       });
     }
 
-    return new BareBookmark(ctx, bookmark);
+    return new BareBookmark(ctx, bookmark, bookmark.type);
   }
 
   protected static async isAllowedToAccessBookmark(
@@ -172,7 +177,7 @@ export class Bookmark extends BareBookmark {
     ctx: AuthedContext,
     private bookmark: ZBookmark,
   ) {
-    super(ctx, bookmark);
+    super(ctx, bookmark, bookmark.content.type);
   }
 
   private static async toZodSchema(
@@ -251,6 +256,7 @@ export class Bookmark extends BareBookmark {
     if (bookmark.collection) {
       content = {
         type: BookmarkTypes.COLLECTION,
+        content: null,
         items: collection.items
           .sort((a, b) => a.position - b.position)
           .map((item) => {
@@ -261,6 +267,7 @@ export class Bookmark extends BareBookmark {
             return {
               bookmarkId: item.bookmarkId,
               assetId: item.bookmark.asset.assetId,
+              fileName: item.bookmark.asset.fileName,
               position: item.position,
             };
           }),
@@ -701,6 +708,7 @@ export class Bookmark extends BareBookmark {
             content = {
               type: BookmarkTypes.COLLECTION,
               items: [],
+              content: null,
             };
           } else {
             content = {
@@ -799,6 +807,7 @@ export class Bookmark extends BareBookmark {
           bookmarkId: imageCollectionItems.bookmarkId,
           position: imageCollectionItems.position,
           assetId: bookmarkAssets.assetId,
+          fileName: bookmarkAssets.fileName,
         })
         .from(imageCollectionItems)
         .innerJoin(bookmarks, eq(bookmarks.id, imageCollectionItems.bookmarkId))
@@ -830,6 +839,7 @@ export class Bookmark extends BareBookmark {
         ).map((item) => ({
           bookmarkId: item.bookmarkId,
           assetId: item.assetId,
+          fileName: item.fileName,
           position: item.position,
         }));
       });
