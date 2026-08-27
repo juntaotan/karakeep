@@ -154,36 +154,20 @@ describe("Bookmark Routes", () => {
       "collection-asset-2",
     ]);
 
-      assert(reordered.content.type === BookmarkTypes.COLLECTION);
-      expect(reordered.content.items.map((item) => item.bookmarkId)).toEqual([
-          secondImage.id,
-          firstImage.id,
-      ]);
-      expect(reordered.content.items.map((item) => item.fileName)).toEqual([
-          "two.png",
-          "one.png",
-      ]);
+    const reordered = await api.reorderImageCollectionItems({
+      bookmarkId: collection.id,
+      bookmarkIds: [secondImage.id, firstImage.id],
+    });
 
-      const storedItems = await db.query.imageCollectionItems.findMany({
-          where: eq(imageCollectionItems.collectionId, collection.id),
-      });
-      expect(
-          storedItems
-              .sort((a, b) => a.position - b.position)
-              .map((item) => item.bookmarkId),
-      ).toEqual([secondImage.id, firstImage.id]);
-      const afterDelete = await api.deleteImageCollectionItem({
-          bookmarkId: collection.id,
-          itemBookmarkId: firstImage.id,
-      });
-
-      assert(afterDelete.content.type === BookmarkTypes.COLLECTION);
-      expect(afterDelete.content.items.map((item) => item.bookmarkId)).toEqual([
-          secondImage.id,
-      ]);
-      expect(afterDelete.content.items.map((item) => item.fileName)).toEqual([
-          "two.png",
-      ]);
+    assert(reordered.content.type === BookmarkTypes.COLLECTION);
+    expect(reordered.content.items.map((item) => item.bookmarkId)).toEqual([
+      secondImage.id,
+      firstImage.id,
+    ]);
+    expect(reordered.content.items.map((item) => item.fileName)).toEqual([
+      "two.png",
+      "one.png",
+    ]);
 
     const collectionWithContent = await api.getBookmark({
       bookmarkId: collection.id,
@@ -210,6 +194,9 @@ describe("Bookmark Routes", () => {
     assert(afterDelete.content.type === BookmarkTypes.COLLECTION);
     expect(afterDelete.content.items.map((item) => item.bookmarkId)).toEqual([
       secondImage.id,
+    ]);
+    expect(afterDelete.content.items.map((item) => item.fileName)).toEqual([
+      "two.png",
     ]);
 
     const storedItemsAfterDelete = await db.query.imageCollectionItems.findMany(

@@ -5,7 +5,6 @@ import { getServerAuthSession } from "@/server/auth";
 
 import type { ZGetBookmarksRequest } from "@karakeep/shared/types/bookmarks";
 
-import HomeBookmarkCollection from "./HomeBookmarkCollection";
 import UpdatableBookmarksGrid from "./UpdatableBookmarksGrid";
 
 export default async function Bookmarks({
@@ -13,13 +12,11 @@ export default async function Bookmarks({
   header,
   showDivider,
   showEditorCard = false,
-  showAsCollection = false,
 }: {
   query: Omit<ZGetBookmarksRequest, "sortOrder" | "includeContent">; // Sort order is handled by the store
   header?: React.ReactNode;
   showDivider?: boolean;
   showEditorCard?: boolean;
-  showAsCollection?: boolean;
 }) {
   const session = await getServerAuthSession();
   if (!session) {
@@ -34,19 +31,11 @@ export default async function Bookmarks({
     <div className="flex flex-col gap-3">
       {header}
       {showDivider && <Separator />}
-      {showAsCollection ? (
-        <HomeBookmarkCollection
-          query={query}
-          bookmarks={bookmarks}
-          showEditorCard={showEditorCard}
-        />
-      ) : (
-        <UpdatableBookmarksGrid
-          query={query}
-          bookmarks={bookmarks}
-          showEditorCard={showEditorCard}
-        />
-      )}
+      <UpdatableBookmarksGrid
+        query={query}
+        bookmarks={bookmarks}
+        showEditorCard={showEditorCard}
+      />
     </div>
   );
 }

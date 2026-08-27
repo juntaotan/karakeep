@@ -2,7 +2,6 @@
 
 import type { z } from "zod";
 import { createContext, useContext } from "react";
-import { usePathname } from "next/navigation";
 import { fallbackLng } from "@/lib/i18n/settings";
 
 import type { BookmarksLayoutTypes, zUserLocalSettings } from "./types";
@@ -13,7 +12,6 @@ export const UserLocalSettingsCtx = createContext<
   z.infer<typeof zUserLocalSettings>
 >({
   bookmarkGridLayout: defaultLayout,
-  bookmarkGridLayoutsByView: {},
   lang: fallbackLng,
   gridColumns: 3,
   showNotes: false,
@@ -38,10 +36,7 @@ export function useBookmarkDisplaySettings() {
 
 export function useBookmarkLayout() {
   const settings = useUserLocalSettings();
-  const pathname = usePathname();
-  return (
-    settings.bookmarkGridLayoutsByView[pathname] ?? settings.bookmarkGridLayout
-  );
+  return settings.bookmarkGridLayout;
 }
 
 export function useInterfaceLang() {
