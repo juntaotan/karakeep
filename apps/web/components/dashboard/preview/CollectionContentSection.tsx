@@ -158,7 +158,12 @@ export function CollectionContentSection({
             )}
 
             <div className="relative min-h-[60vh] overflow-hidden rounded border bg-muted">
-              <Link href={getAssetUrl(item.assetId)} target="_blank">
+              <Link
+                href={`/dashboard/preview/${item.bookmarkId}`}
+                aria-label={t("preview.collection_image", {
+                  index: index + 1,
+                })}
+              >
                 <Image
                   alt={t("preview.collection_image", { index: index + 1 })}
                   fill={true}

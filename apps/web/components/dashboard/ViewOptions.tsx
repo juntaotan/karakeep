@@ -7,6 +7,7 @@ import {
   useState,
   useTransition,
 } from "react";
+import { usePathname } from "next/navigation";
 import { ButtonWithTooltip } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -57,6 +58,7 @@ const iconMap: Record<LayoutType, LucideIcon> = {
 
 export default function ViewOptions() {
   const { t } = useTranslation();
+  const pathname = usePathname();
   const layout = useBookmarkLayout();
   const gridColumns = useGridColumns();
   const actualDisplaySettings = useBookmarkDisplaySettings();
@@ -85,7 +87,7 @@ export default function ViewOptions() {
   const handleLayoutChange = (newLayout: LayoutType) => {
     startTransition(async () => {
       setOptimisticLayout(newLayout);
-      await updateBookmarksLayout(newLayout);
+      await updateBookmarksLayout(newLayout, pathname);
     });
   };
 
