@@ -441,6 +441,10 @@
                         "assetId": {
                           "type": "string"
                         },
+                        "fileName": {
+                          "type": "string",
+                          "nullable": true
+                        },
                         "position": {
                           "type": "integer"
                         }
