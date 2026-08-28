@@ -51,7 +51,7 @@ export function CollectionContentSection({
     api.bookmarks.deleteImageCollectionItem.mutationOptions({
       onSuccess: () => {
         toast({
-          description: "Image removed from collection",
+          description: t("preview.image_removed_from_collection"),
         });
         queryClient.invalidateQueries(
           api.bookmarks.getBookmark.queryFilter({ bookmarkId: bookmark.id }),
@@ -60,7 +60,7 @@ export function CollectionContentSection({
       },
       onError: (e) => {
         toast({
-          description: e.message || "Failed to delete image",
+          description: e.message || t("preview.failed_to_delete_image"),
           variant: "destructive",
         });
       },
@@ -88,9 +88,16 @@ export function CollectionContentSection({
           <div key={item.bookmarkId} className="flex flex-col gap-2">
             {items.length > 1 && (
               <div className="flex items-center justify-between gap-2">
-                <span className="text-sm text-muted-foreground">
-                  {index + 1} / {items.length}
-                </span>
+                <div className="flex min-w-0 items-center gap-2 text-sm text-muted-foreground">
+                  <span className="shrink-0">
+                    {index + 1} / {items.length}
+                  </span>
+                  {item.fileName && (
+                    <span className="truncate" title={item.fileName}>
+                      {item.fileName}
+                    </span>
+                  )}
+                </div>
                 <div className="flex gap-2">
                   <Button
                     type="button"
@@ -98,7 +105,7 @@ export function CollectionContentSection({
                     size="icon"
                     disabled={index === 0 || isReordering || isDeleting}
                     onClick={() => moveItem(index, index - 1)}
-                    title="Move up"
+                    title={t("preview.move_image_up")}
                   >
                     <ArrowUp className="size-4" />
                   </Button>
@@ -110,13 +117,15 @@ export function CollectionContentSection({
                       index === items.length - 1 || isReordering || isDeleting
                     }
                     onClick={() => moveItem(index, index + 1)}
-                    title="Move down"
+                    title={t("preview.move_image_down")}
                   >
                     <ArrowDown className="size-4" />
                   </Button>
                   <ActionConfirmingDialog
-                    title="Remove image from collection?"
-                    description="This removes the image from this collection. The original bookmark will not be deleted."
+                    title={t("preview.remove_image_from_collection_title")}
+                    description={t(
+                      "preview.remove_image_from_collection_description",
+                    )}
                     actionButton={(setDialogOpen) => (
                       <ActionButton
                         loading={isDeleting}
@@ -132,7 +141,7 @@ export function CollectionContentSection({
                         }
                       >
                         <Trash2 className="mr-2 size-4" />
-                        Delete
+                        {t("preview.delete_image")}
                       </ActionButton>
                     )}
                   >
@@ -141,7 +150,7 @@ export function CollectionContentSection({
                       variant="outline"
                       size="icon"
                       disabled={items.length <= 1 || isReordering || isDeleting}
-                      title="Delete"
+                      title={t("preview.delete_image")}
                     >
                       <Trash2 className="size-4" />
                     </Button>
