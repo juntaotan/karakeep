@@ -105,7 +105,10 @@ export function EditBookmarkDialog({
     ),
   );
 
-  const { data: selectedImageContent } = useQuery(
+  const {
+    data: selectedImageContent,
+    isLoading: isSelectedImageContentLoading,
+  } = useQuery(
     api.bookmarks.getBookmark.queryOptions(
       {
         bookmarkId: selectedImageBookmarkId ?? "",
@@ -214,6 +217,9 @@ export function EditBookmarkDialog({
 
   const isLink = bookmark.content.type === BookmarkTypes.LINK;
   const isAsset = bookmark.content.type === BookmarkTypes.ASSET;
+
+  const isCollectionImageContentLoading =
+    isCollection && (!selectedImageBookmarkId || isSelectedImageContentLoading);
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -355,7 +361,11 @@ export function EditBookmarkDialog({
                     </div>
                     <FormControl>
                       <Textarea
-                        disabled={isAssetContentLoading}
+                        disabled={
+                          isCollection
+                            ? isCollectionImageContentLoading
+                            : isAssetContentLoading
+                        }
                         placeholder="Extracted Content"
                         {...field}
                         value={field.value ?? ""}
