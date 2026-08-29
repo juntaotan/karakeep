@@ -1586,6 +1586,9 @@
               "schema": {
                 "type": "object",
                 "properties": {
+                  "selectedImageBookmarkId": {
+                    "type": "string"
+                  },
                   "archived": {
                     "type": "boolean"
                   },

@@ -890,21 +890,65 @@ export const bookmarksAppRouter = router({
         }
 
         if (input.assetContent !== undefined) {
-          const result = await tx
-            .update(bookmarkAssets)
-            .set({
-              content: input.assetContent,
-            })
-            .where(and(eq(bookmarkAssets.id, input.bookmarkId)));
+          if (ctx.bookmark.type === BookmarkTypes.COLLECTION) {
+            // Update the selected image content for a collection bookmark
+            if (!input.selectedImageBookmarkId) {
+              throw new TRPCError({
+                code: "BAD_REQUEST",
+                message: "No collection image selected",
+              });
+            }
+            const [collectionItem] = await tx
+              .select()
+              .from(imageCollectionItems)
+              .where(
+                and(
+                  eq(imageCollectionItems.collectionId, input.bookmarkId),
+                  eq(
+                    imageCollectionItems.bookmarkId,
+                    input.selectedImageBookmarkId,
+                  ),
+                ),
+              )
+              .limit(1);
+            // Update the content of the selected image bookmark in the collection
+            if (!collectionItem) {
+              throw new TRPCError({
+                code: "BAD_REQUEST",
+                message: "Selected image does not belong to this collection",
+              });
+            }
+            const result = await tx
+              .update(bookmarkAssets)
+              .set({
+                content: input.assetContent,
+              })
+              .where(eq(bookmarkAssets.id, input.selectedImageBookmarkId));
+            somethingChanged = true;
 
-          if (result.changes == 0) {
-            throw new TRPCError({
-              code: "BAD_REQUEST",
-              message:
-                "Attempting to set asset content for non-asset type bookmark",
-            });
+            if (result.changes == 0) {
+              throw new TRPCError({
+                code: "BAD_REQUEST",
+                message: "Selected bookmark is not an asset",
+              });
+            }
+          } else {
+            const result = await tx
+              .update(bookmarkAssets)
+              .set({
+                content: input.assetContent,
+              })
+              .where(and(eq(bookmarkAssets.id, input.bookmarkId)));
+
+            if (result.changes == 0) {
+              throw new TRPCError({
+                code: "BAD_REQUEST",
+                message:
+                  "Attempting to set asset content for non-asset type bookmark",
+              });
+            }
+            somethingChanged = true;
           }
-          somethingChanged = true;
         }
 
         // Update common bookmark fields

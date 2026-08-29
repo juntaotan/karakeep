@@ -343,6 +343,7 @@ export type ZGetBookmarksResponse = z.infer<typeof zGetBookmarksResponseSchema>;
 // PATCH /v1/bookmarks/[bookmarkId]
 export const zUpdateBookmarksRequestSchema = z.object({
   bookmarkId: z.string(),
+  selectedImageBookmarkId: z.string().optional(),
   archived: z.boolean().optional(),
   favourited: z.boolean().optional(),
   summary: z.string().nullish(),
