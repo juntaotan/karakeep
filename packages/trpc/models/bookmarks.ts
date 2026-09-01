@@ -29,6 +29,7 @@ import {
   bookmarksInLists,
   bookmarkTags,
   bookmarkTexts,
+  imageCollectionItems,
   rssFeedImportsTable,
   tagsOnBookmarks,
 } from "@karakeep/db/schema";
@@ -74,6 +75,19 @@ async function dummyDrizzleReturnType() {
       link: true,
       text: true,
       asset: true,
+      collection: {
+        with: {
+          items: {
+            with: {
+              bookmark: {
+                with: {
+                  asset: true,
+                },
+              },
+            },
+          },
+        },
+      },
       assets: true,
     },
   });
@@ -96,6 +110,7 @@ export class BareBookmark {
   protected constructor(
     protected ctx: AuthedContext,
     private bareBookmark: ZBareBookmark,
+    private bookmarkType: ZBookmarkContent["type"],
   ) {}
 
   get id() {
@@ -108,6 +123,10 @@ export class BareBookmark {
 
   get userId() {
     return this.bareBookmark.userId;
+  }
+
+  get type() {
+    return this.bookmarkType;
   }
 
   static async bareFromId(ctx: AuthedContext, bookmarkId: string) {
@@ -129,7 +148,7 @@ export class BareBookmark {
       });
     }
 
-    return new BareBookmark(ctx, bookmark);
+    return new BareBookmark(ctx, bookmark, bookmark.type);
   }
 
   protected static async isAllowedToAccessBookmark(
@@ -158,14 +177,15 @@ export class Bookmark extends BareBookmark {
     ctx: AuthedContext,
     private bookmark: ZBookmark,
   ) {
-    super(ctx, bookmark);
+    super(ctx, bookmark, bookmark.content.type);
   }
 
   private static async toZodSchema(
     bookmark: BookmarkQueryReturnType,
     includeContent: boolean,
   ): Promise<ZBookmark> {
-    const { tagsOnBookmarks, link, text, asset, assets, ...rest } = bookmark;
+    const { tagsOnBookmarks, link, text, asset, collection, assets, ...rest } =
+      bookmark;
 
     let content: ZBookmarkContent = {
       type: BookmarkTypes.UNKNOWN,
@@ -233,6 +253,26 @@ export class Bookmark extends BareBookmark {
         content: includeContent ? asset.content : null,
       };
     }
+    if (bookmark.collection) {
+      content = {
+        type: BookmarkTypes.COLLECTION,
+        content: null,
+        items: collection.items
+          .sort((a, b) => a.position - b.position)
+          .map((item) => {
+            invariant(
+              item.bookmark.asset,
+              "image collection item must reference an asset bookmark",
+            );
+            return {
+              bookmarkId: item.bookmarkId,
+              assetId: item.bookmark.asset.assetId,
+              fileName: item.bookmark.asset.fileName,
+              position: item.position,
+            };
+          }),
+      };
+    }
 
     return {
       tags: tagsOnBookmarks
@@ -270,6 +310,19 @@ export class Bookmark extends BareBookmark {
         link: true,
         text: true,
         asset: true,
+        collection: {
+          with: {
+            items: {
+              with: {
+                bookmark: {
+                  with: {
+                    asset: true,
+                  },
+                },
+              },
+            },
+          },
+        },
         assets: true,
       },
     });
@@ -651,6 +704,12 @@ export class Bookmark extends BareBookmark {
                 ? (row.bookmarkAssets.content ?? null)
                 : null,
             };
+          } else if (row.bookmarksSq.type === BookmarkTypes.COLLECTION) {
+            content = {
+              type: BookmarkTypes.COLLECTION,
+              items: [],
+              content: null,
+            };
           } else {
             content = {
               type: BookmarkTypes.UNKNOWN,
@@ -737,6 +796,54 @@ export class Bookmark extends BareBookmark {
     );
 
     const bookmarksArr = Object.values(bookmarksRes);
+    const collectionBookmarks = bookmarksArr.filter(
+      (bookmark) => bookmark.content.type === BookmarkTypes.COLLECTION,
+    );
+
+    if (collectionBookmarks.length > 0) {
+      const collectionRows = await ctx.db
+        .select({
+          collectionId: imageCollectionItems.collectionId,
+          bookmarkId: imageCollectionItems.bookmarkId,
+          position: imageCollectionItems.position,
+          assetId: bookmarkAssets.assetId,
+          fileName: bookmarkAssets.fileName,
+        })
+        .from(imageCollectionItems)
+        .innerJoin(bookmarks, eq(bookmarks.id, imageCollectionItems.bookmarkId))
+        .innerJoin(bookmarkAssets, eq(bookmarkAssets.id, bookmarks.id))
+        .where(
+          and(
+            inArray(
+              imageCollectionItems.collectionId,
+              collectionBookmarks.map((bookmark) => bookmark.id),
+            ),
+            eq(bookmarks.userId, ctx.user.id),
+            eq(bookmarks.type, BookmarkTypes.ASSET),
+            eq(bookmarkAssets.assetType, "image"),
+          ),
+        )
+        .orderBy(asc(imageCollectionItems.position));
+
+      const itemsByCollectionId = new Map<string, typeof collectionRows>();
+      collectionRows.forEach((item) => {
+        const items = itemsByCollectionId.get(item.collectionId) ?? [];
+        items.push(item);
+        itemsByCollectionId.set(item.collectionId, items);
+      });
+
+      collectionBookmarks.forEach((bookmark) => {
+        invariant(bookmark.content.type === BookmarkTypes.COLLECTION);
+        bookmark.content.items = (
+          itemsByCollectionId.get(bookmark.id) ?? []
+        ).map((item) => ({
+          bookmarkId: item.bookmarkId,
+          assetId: item.assetId,
+          fileName: item.fileName,
+          position: item.position,
+        }));
+      });
+    }
 
     // Fetch HTML content from assets for bookmarks that have contentAssetId (large content)
     if (input.includeContent) {

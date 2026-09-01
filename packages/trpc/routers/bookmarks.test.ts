@@ -2,8 +2,12 @@ import { eq } from "drizzle-orm";
 import { assert, beforeEach, describe, expect, test, vi } from "vitest";
 
 import {
+  assets,
+  AssetTypes,
+  bookmarkAssets,
   bookmarkLinks,
   bookmarks,
+  imageCollectionItems,
   rssFeedImportsTable,
   tagsOnBookmarks,
   users,
@@ -64,6 +68,72 @@ describe("Bookmark Routes", () => {
     return feed.id;
   }
 
+  async function createImageCollectionFixture(
+    api: APICallerType["bookmarks"],
+    db: CustomTestContext["db"],
+    options: { withOcrContent?: boolean } = {},
+  ) {
+    const user = await db.query.users.findFirst({
+      where: eq(users.email, "test1@test.com"),
+    });
+    assert(user);
+
+    await db.insert(assets).values([
+      {
+        id: "collection-asset-1",
+        assetType: AssetTypes.UNKNOWN,
+        bookmarkId: null,
+        userId: user.id,
+        contentType: "image/png",
+        size: 100,
+        fileName: "one.png",
+      },
+      {
+        id: "collection-asset-2",
+        assetType: AssetTypes.UNKNOWN,
+        bookmarkId: null,
+        userId: user.id,
+        contentType: "image/png",
+        size: 200,
+        fileName: "two.png",
+      },
+    ]);
+
+    const firstImage = await api.createBookmark({
+      type: BookmarkTypes.ASSET,
+      assetType: "image",
+      assetId: "collection-asset-1",
+      fileName: "one.png",
+      title: "First image",
+    });
+    const secondImage = await api.createBookmark({
+      type: BookmarkTypes.ASSET,
+      assetType: "image",
+      assetId: "collection-asset-2",
+      fileName: "two.png",
+      title: "Second image",
+    });
+
+    if (options.withOcrContent) {
+      await db
+        .update(bookmarkAssets)
+        .set({ content: "First image OCR" })
+        .where(eq(bookmarkAssets.id, firstImage.id));
+      await db
+        .update(bookmarkAssets)
+        .set({ content: "Second image OCR" })
+        .where(eq(bookmarkAssets.id, secondImage.id));
+    }
+
+    const collection = await api.createBookmark({
+      type: BookmarkTypes.COLLECTION,
+      title: "2 images",
+      bookmarkIds: [firstImage.id, secondImage.id],
+    });
+
+    return { collection, firstImage, secondImage };
+  }
+
   test<CustomTestContext>("create bookmark", async ({ apiCallers }) => {
     const api = apiCallers[0].bookmarks;
     const bookmark = await api.createBookmark({
@@ -77,6 +147,111 @@ describe("Bookmark Routes", () => {
     expect(res.favourited).toEqual(false);
     expect(res.archived).toEqual(false);
     expect(res.content.type).toEqual(BookmarkTypes.LINK);
+  });
+
+  test<CustomTestContext>("create and reorder image collection bookmark", async ({
+    apiCallers,
+    db,
+  }) => {
+    const api = apiCallers[0].bookmarks;
+    const { collection, firstImage, secondImage } =
+      await createImageCollectionFixture(api, db);
+
+    assert(collection.content.type === BookmarkTypes.COLLECTION);
+    expect(collection.content.items.map((item) => item.bookmarkId)).toEqual([
+      firstImage.id,
+      secondImage.id,
+    ]);
+    expect(collection.content.items.map((item) => item.assetId)).toEqual([
+      "collection-asset-1",
+      "collection-asset-2",
+    ]);
+
+    const reordered = await api.reorderImageCollectionItems({
+      bookmarkId: collection.id,
+      bookmarkIds: [secondImage.id, firstImage.id],
+    });
+
+    assert(reordered.content.type === BookmarkTypes.COLLECTION);
+    expect(reordered.content.items.map((item) => item.bookmarkId)).toEqual([
+      secondImage.id,
+      firstImage.id,
+    ]);
+    expect(reordered.content.items.map((item) => item.fileName)).toEqual([
+      "two.png",
+      "one.png",
+    ]);
+
+    const storedItems = await db.query.imageCollectionItems.findMany({
+      where: eq(imageCollectionItems.collectionId, collection.id),
+    });
+    expect(
+      storedItems
+        .sort((a, b) => a.position - b.position)
+        .map((item) => item.bookmarkId),
+    ).toEqual([secondImage.id, firstImage.id]);
+  });
+
+  test<CustomTestContext>("image collection readable content follows item order", async ({
+    apiCallers,
+    db,
+  }) => {
+    const api = apiCallers[0].bookmarks;
+    const { collection, firstImage, secondImage } =
+      await createImageCollectionFixture(api, db, { withOcrContent: true });
+
+    await api.reorderImageCollectionItems({
+      bookmarkId: collection.id,
+      bookmarkIds: [secondImage.id, firstImage.id],
+    });
+
+    const collectionWithContent = await api.getBookmark({
+      bookmarkId: collection.id,
+      includeContent: true,
+    });
+
+    assert(collectionWithContent.content.type === BookmarkTypes.COLLECTION);
+    expect(collectionWithContent.content.content).toBe(
+      "Second image\nSecond image OCR\nFirst image\nFirst image OCR",
+    );
+  });
+
+  test<CustomTestContext>("delete image collection item reorders remaining images", async ({
+    apiCallers,
+    db,
+  }) => {
+    const api = apiCallers[0].bookmarks;
+    const { collection, firstImage, secondImage } =
+      await createImageCollectionFixture(api, db);
+
+    const afterDelete = await api.deleteImageCollectionItem({
+      bookmarkId: collection.id,
+      itemBookmarkId: firstImage.id,
+    });
+
+    assert(afterDelete.content.type === BookmarkTypes.COLLECTION);
+    expect(afterDelete.content.items.map((item) => item.bookmarkId)).toEqual([
+      secondImage.id,
+    ]);
+    expect(afterDelete.content.items.map((item) => item.fileName)).toEqual([
+      "two.png",
+    ]);
+
+    const storedItemsAfterDelete = await db.query.imageCollectionItems.findMany(
+      {
+        where: eq(imageCollectionItems.collectionId, collection.id),
+      },
+    );
+    expect(storedItemsAfterDelete).toHaveLength(1);
+    expect(storedItemsAfterDelete[0].bookmarkId).toBe(secondImage.id);
+    expect(storedItemsAfterDelete[0].position).toBe(0);
+
+    await expect(() =>
+      api.deleteImageCollectionItem({
+        bookmarkId: collection.id,
+        itemBookmarkId: secondImage.id,
+      }),
+    ).rejects.toThrow(/last image/i);
   });
 
   test<CustomTestContext>("get readable bookmark content as markdown or text", async ({
