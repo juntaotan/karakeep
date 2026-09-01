@@ -1275,9 +1275,10 @@ export const bookmarksAppRouter = router({
           }
 
           if (
-            row.attachedBy === "ai" &&
+            row.taggingStatus === "success" &&
             row.tagId &&
             row.tagName &&
+            row.attachedBy &&
             !collectionTags.has(row.tagId)
           ) {
             collectionTags.set(row.tagId, {
