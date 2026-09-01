@@ -1,5 +1,5 @@
 import { experimental_trpcMiddleware, TRPCError } from "@trpc/server";
-import { and, asc, eq, gt, inArray, like, lt, or } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, like, lt, or, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import type { KarakeepDBTransaction } from "@karakeep/db";
@@ -890,21 +890,65 @@ export const bookmarksAppRouter = router({
         }
 
         if (input.assetContent !== undefined) {
-          const result = await tx
-            .update(bookmarkAssets)
-            .set({
-              content: input.assetContent,
-            })
-            .where(and(eq(bookmarkAssets.id, input.bookmarkId)));
+          if (ctx.bookmark.type === BookmarkTypes.COLLECTION) {
+            // Update the selected image content for a collection bookmark
+            if (!input.selectedImageBookmarkId) {
+              throw new TRPCError({
+                code: "BAD_REQUEST",
+                message: "No collection image selected",
+              });
+            }
+            const [collectionItem] = await tx
+              .select()
+              .from(imageCollectionItems)
+              .where(
+                and(
+                  eq(imageCollectionItems.collectionId, input.bookmarkId),
+                  eq(
+                    imageCollectionItems.bookmarkId,
+                    input.selectedImageBookmarkId,
+                  ),
+                ),
+              )
+              .limit(1);
+            // Update the content of the selected image bookmark in the collection
+            if (!collectionItem) {
+              throw new TRPCError({
+                code: "BAD_REQUEST",
+                message: "Selected image does not belong to this collection",
+              });
+            }
+            const result = await tx
+              .update(bookmarkAssets)
+              .set({
+                content: input.assetContent,
+              })
+              .where(eq(bookmarkAssets.id, input.selectedImageBookmarkId));
+            somethingChanged = true;
 
-          if (result.changes == 0) {
-            throw new TRPCError({
-              code: "BAD_REQUEST",
-              message:
-                "Attempting to set asset content for non-asset type bookmark",
-            });
+            if (result.changes == 0) {
+              throw new TRPCError({
+                code: "BAD_REQUEST",
+                message: "Selected bookmark is not an asset",
+              });
+            }
+          } else {
+            const result = await tx
+              .update(bookmarkAssets)
+              .set({
+                content: input.assetContent,
+              })
+              .where(and(eq(bookmarkAssets.id, input.bookmarkId)));
+
+            if (result.changes == 0) {
+              throw new TRPCError({
+                code: "BAD_REQUEST",
+                message:
+                  "Attempting to set asset content for non-asset type bookmark",
+              });
+            }
+            somethingChanged = true;
           }
-          somethingChanged = true;
         }
 
         // Update common bookmark fields
@@ -1167,24 +1211,35 @@ export const bookmarksAppRouter = router({
     .use(ensureBookmarkAccess)
     .query(async ({ input, ctx }) => {
       if (ctx.bookmark.type === BookmarkTypes.COLLECTION) {
-        const collectionImagesWithOcr = input.includeContent
-          ? await ctx.db
-              .select({
-                title: bookmarks.title,
-                content: bookmarkAssets.content,
-              })
-              .from(imageCollectionItems)
-              .innerJoin(
-                bookmarks,
-                eq(bookmarks.id, imageCollectionItems.bookmarkId),
-              )
-              .innerJoin(
-                bookmarkAssets,
-                eq(bookmarkAssets.id, imageCollectionItems.bookmarkId),
-              )
-              .where(eq(imageCollectionItems.collectionId, input.bookmarkId))
-              .orderBy(asc(imageCollectionItems.position))
-          : [];
+        const collectionImageRows = await ctx.db
+          .select({
+            bookmarkId: imageCollectionItems.bookmarkId,
+            position: imageCollectionItems.position,
+            title: bookmarks.title,
+            content: input.includeContent
+              ? bookmarkAssets.content
+              : sql<null>`NULL`,
+            taggingStatus: bookmarks.taggingStatus,
+            tagId: bookmarkTags.id,
+            tagName: bookmarkTags.name,
+            attachedBy: tagsOnBookmarks.attachedBy,
+          })
+          .from(imageCollectionItems)
+          .innerJoin(
+            bookmarks,
+            eq(bookmarks.id, imageCollectionItems.bookmarkId),
+          )
+          .innerJoin(
+            bookmarkAssets,
+            eq(bookmarkAssets.id, imageCollectionItems.bookmarkId),
+          )
+          .leftJoin(
+            tagsOnBookmarks,
+            eq(tagsOnBookmarks.bookmarkId, imageCollectionItems.bookmarkId),
+          )
+          .leftJoin(bookmarkTags, eq(bookmarkTags.id, tagsOnBookmarks.tagId))
+          .where(eq(imageCollectionItems.collectionId, input.bookmarkId))
+          .orderBy(asc(imageCollectionItems.position));
 
         const collectionBookmark = (
           await Bookmark.fromId(ctx, input.bookmarkId, input.includeContent)
@@ -1197,11 +1252,61 @@ export const bookmarksAppRouter = router({
           });
         }
 
+        const collectionImages = new Map<
+          string,
+          { position: number; title: string | null; content: string | null }
+        >();
+        const childTaggingStatuses = new Map<
+          string,
+          "pending" | "success" | "failure" | null
+        >();
+        const collectionTags = new Map(
+          collectionBookmark.tags.map((tag) => [tag.id, tag]),
+        );
+
+        for (const row of collectionImageRows) {
+          if (!collectionImages.has(row.bookmarkId)) {
+            collectionImages.set(row.bookmarkId, {
+              position: row.position,
+              title: row.title,
+              content: row.content,
+            });
+            childTaggingStatuses.set(row.bookmarkId, row.taggingStatus);
+          }
+
+          if (
+            row.attachedBy === "ai" &&
+            row.tagId &&
+            row.tagName &&
+            !collectionTags.has(row.tagId)
+          ) {
+            collectionTags.set(row.tagId, {
+              id: row.tagId,
+              name: row.tagName,
+              attachedBy: row.attachedBy,
+            });
+          }
+        }
+
         collectionBookmark.content.content = input.includeContent
-          ? collectionImagesWithOcr
+          ? [...collectionImages.values()]
+              .sort((a, b) => a.position - b.position)
               .map(({ title, content }) => `${title ?? ""}\n${content ?? ""}`)
               .join("\n")
           : null;
+        collectionBookmark.tags = [...collectionTags.values()].sort((a, b) =>
+          a.attachedBy === "ai" ? 1 : b.attachedBy === "ai" ? -1 : 0,
+        );
+
+        const taggingStatuses = [...childTaggingStatuses.values()];
+        collectionBookmark.taggingStatus = taggingStatuses.includes("pending")
+          ? "pending"
+          : taggingStatuses.includes("failure")
+            ? "failure"
+            : taggingStatuses.length > 0 &&
+                taggingStatuses.every((status) => status === "success")
+              ? "success"
+              : null;
 
         return collectionBookmark;
       }

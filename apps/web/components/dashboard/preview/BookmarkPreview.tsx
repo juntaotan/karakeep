@@ -139,7 +139,7 @@ export default function BookmarkPreview({
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const { data: session } = useSession();
 
-  const { data: bookmark } = useQuery(
+  const { data: bookmarkWithoutContent } = useQuery(
     api.bookmarks.getBookmark.queryOptions(
       {
         bookmarkId,
@@ -156,6 +156,34 @@ export default function BookmarkPreview({
       },
     ),
   );
+
+  // If the bookmark is a collection, it will get OCR content additionally
+  const isCollection =
+    bookmarkWithoutContent?.content.type === BookmarkTypes.COLLECTION;
+  const { data: collectionWithContent } = useQuery(
+    api.bookmarks.getBookmark.queryOptions(
+      {
+        bookmarkId,
+        includeContent: true,
+      },
+      {
+        enabled: isCollection,
+        initialData:
+          initialData?.content.type === BookmarkTypes.COLLECTION &&
+          initialData.content.content !== null
+            ? initialData
+            : undefined,
+        refetchInterval: (query) => {
+          const data = query.state.data;
+          if (!data) {
+            return false;
+          }
+          return getBookmarkRefreshInterval(data);
+        },
+      },
+    ),
+  );
+  const bookmark = collectionWithContent ?? bookmarkWithoutContent;
 
   if (!bookmark) {
     return <FullPageSpinner />;

@@ -122,6 +122,14 @@ export function useUpdateBookmark(
         queryClient.invalidateQueries(
           api.bookmarks.getBookmark.queryFilter({ bookmarkId: req.bookmarkId }),
         );
+        // A collection update may modify the selected child image's content.
+        if (req.selectedImageBookmarkId) {
+          queryClient.invalidateQueries(
+            api.bookmarks.getBookmark.queryFilter({
+              bookmarkId: req.selectedImageBookmarkId,
+            }),
+          );
+        }
         scheduleInvalidateQueries(queryClient, api.lists.stats.pathFilter());
         return opts?.onSuccess?.(res, req, meta, context);
       },

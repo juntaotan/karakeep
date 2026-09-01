@@ -169,6 +169,67 @@ describe("Bookmark Routes", () => {
       "one.png",
     ]);
 
+    await api.updateTags({
+      bookmarkId: firstImage.id,
+      attach: [
+        { tagName: "shared-image-tag", attachedBy: "ai" },
+        { tagName: "first-image-tag", attachedBy: "ai" },
+        { tagName: "child-human-tag", attachedBy: "human" },
+      ],
+      detach: [],
+    });
+    await api.updateTags({
+      bookmarkId: secondImage.id,
+      attach: [
+        { tagName: "shared-image-tag", attachedBy: "ai" },
+        { tagName: "second-image-tag", attachedBy: "ai" },
+      ],
+      detach: [],
+    });
+    await api.updateTags({
+      bookmarkId: collection.id,
+      attach: [{ tagName: "collection-human-tag", attachedBy: "human" }],
+      detach: [],
+    });
+
+    const collectionWhileTagging = await api.getBookmark({
+      bookmarkId: collection.id,
+    });
+    expect(collectionWhileTagging.taggingStatus).toBe("pending");
+
+    await db
+      .update(bookmarks)
+      .set({ taggingStatus: "success" })
+      .where(eq(bookmarks.id, firstImage.id));
+    await db
+      .update(bookmarks)
+      .set({ taggingStatus: "success" })
+      .where(eq(bookmarks.id, secondImage.id));
+
+    const collectionWithTags = await api.getBookmark({
+      bookmarkId: collection.id,
+    });
+    expect(collectionWithTags.taggingStatus).toBe("success");
+    expect(
+      collectionWithTags.tags.map((tag) => ({
+        name: tag.name,
+        attachedBy: tag.attachedBy,
+      })),
+    ).toEqual(
+      expect.arrayContaining([
+        { name: "collection-human-tag", attachedBy: "human" },
+        { name: "shared-image-tag", attachedBy: "ai" },
+        { name: "first-image-tag", attachedBy: "ai" },
+        { name: "second-image-tag", attachedBy: "ai" },
+      ]),
+    );
+    expect(
+      collectionWithTags.tags.filter((tag) => tag.name === "shared-image-tag"),
+    ).toHaveLength(1);
+    expect(
+      collectionWithTags.tags.some((tag) => tag.name === "child-human-tag"),
+    ).toBe(false);
+
     const collectionWithContent = await api.getBookmark({
       bookmarkId: collection.id,
       includeContent: true,
