@@ -1275,6 +1275,7 @@ export const bookmarksAppRouter = router({
           }
 
           if (
+            row.taggingStatus === "success" &&
             row.attachedBy === "ai" &&
             row.tagId &&
             row.tagName &&
