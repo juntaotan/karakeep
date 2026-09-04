@@ -711,25 +711,22 @@ export const bookmarksAppRouter = router({
         });
       }
 
-      await ctx.db.transaction(async (tx) => {
-        await Promise.all(
-          input.bookmarkIds.map((itemBookmarkId, index) =>
-            tx
-              .update(imageCollectionItems)
-              .set({ position: index })
-              .where(
-                and(
-                  eq(imageCollectionItems.collectionId, input.bookmarkId),
-                  eq(imageCollectionItems.bookmarkId, itemBookmarkId),
-                ),
+      ctx.db.transaction((tx) => {
+        input.bookmarkIds.forEach((itemBookmarkId, index) => {
+          tx.update(imageCollectionItems)
+            .set({ position: index })
+            .where(
+              and(
+                eq(imageCollectionItems.collectionId, input.bookmarkId),
+                eq(imageCollectionItems.bookmarkId, itemBookmarkId),
               ),
-          ),
-        );
-
-        await tx
-          .update(imageCollections)
+            )
+            .run();
+        });
+        tx.update(imageCollections)
           .set({ modifiedAt: new Date() })
-          .where(eq(imageCollections.id, input.bookmarkId));
+          .where(eq(imageCollections.id, input.bookmarkId))
+          .run();
       });
 
       return (
@@ -784,34 +781,30 @@ export const bookmarksAppRouter = router({
         .filter((item) => item.bookmarkId !== input.itemBookmarkId)
         .sort((a, b) => a.position - b.position);
 
-      await ctx.db.transaction(async (tx) => {
-        await tx
-          .delete(imageCollectionItems)
+      ctx.db.transaction((tx) => {
+        tx.delete(imageCollectionItems)
           .where(
             and(
               eq(imageCollectionItems.collectionId, input.bookmarkId),
               eq(imageCollectionItems.bookmarkId, input.itemBookmarkId),
             ),
-          );
-
-        await Promise.all(
-          remainingItems.map((item, index) =>
-            tx
-              .update(imageCollectionItems)
-              .set({ position: index })
-              .where(
-                and(
-                  eq(imageCollectionItems.collectionId, input.bookmarkId),
-                  eq(imageCollectionItems.bookmarkId, item.bookmarkId),
-                ),
+          )
+          .run();
+        remainingItems.forEach((item, index) => {
+          tx.update(imageCollectionItems)
+            .set({ position: index })
+            .where(
+              and(
+                eq(imageCollectionItems.collectionId, input.bookmarkId),
+                eq(imageCollectionItems.bookmarkId, item.bookmarkId),
               ),
-          ),
-        );
-
-        await tx
-          .update(imageCollections)
+            )
+            .run();
+        });
+        tx.update(imageCollections)
           .set({ modifiedAt: new Date() })
-          .where(eq(imageCollections.id, input.bookmarkId));
+          .where(eq(imageCollections.id, input.bookmarkId))
+          .run();
       });
 
       return (
