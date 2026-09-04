@@ -12,6 +12,7 @@ import {
   inArray,
   lt,
   lte,
+  notExists,
   or,
   SQL,
 } from "drizzle-orm";
@@ -546,6 +547,12 @@ export class Bookmark extends BareBookmark {
         ? eq(bookmarks.favourited, input.favourited)
         : undefined,
       input.ids ? inArray(bookmarks.id, input.ids) : undefined,
+      notExists(
+        ctx.db
+          .select({ bookmarkId: imageCollectionItems.bookmarkId })
+          .from(imageCollectionItems)
+          .where(eq(imageCollectionItems.bookmarkId, bookmarks.id)),
+      ),
     ];
 
     // Build ORDER BY clause
