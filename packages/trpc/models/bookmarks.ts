@@ -824,10 +824,18 @@ export class Bookmark extends BareBookmark {
           position: imageCollectionItems.position,
           assetId: bookmarkAssets.assetId,
           fileName: bookmarkAssets.fileName,
+          tagId: bookmarkTags.id,
+          tagName: bookmarkTags.name,
+          attachedBy: tagsOnBookmarks.attachedBy,
         })
         .from(imageCollectionItems)
         .innerJoin(bookmarks, eq(bookmarks.id, imageCollectionItems.bookmarkId))
         .innerJoin(bookmarkAssets, eq(bookmarkAssets.id, bookmarks.id))
+        .leftJoin(
+          tagsOnBookmarks,
+          eq(tagsOnBookmarks.bookmarkId, imageCollectionItems.bookmarkId),
+        )
+        .leftJoin(bookmarkTags, eq(bookmarkTags.id, tagsOnBookmarks.tagId))
         .where(
           and(
             inArray(
@@ -844,7 +852,9 @@ export class Bookmark extends BareBookmark {
       const itemsByCollectionId = new Map<string, typeof collectionRows>();
       collectionRows.forEach((item) => {
         const items = itemsByCollectionId.get(item.collectionId) ?? [];
-        items.push(item);
+        if (!items.some(({ bookmarkId }) => bookmarkId === item.bookmarkId)) {
+          items.push(item);
+        }
         itemsByCollectionId.set(item.collectionId, items);
       });
 
@@ -858,6 +868,24 @@ export class Bookmark extends BareBookmark {
           fileName: item.fileName,
           position: item.position,
         }));
+
+        const tags = new Map(bookmark.tags.map((tag) => [tag.id, tag]));
+        for (const row of collectionRows) {
+          if (
+            row.collectionId === bookmark.id &&
+            row.tagId &&
+            row.tagName &&
+            row.attachedBy &&
+            !tags.has(row.tagId)
+          ) {
+            tags.set(row.tagId, {
+              id: row.tagId,
+              name: row.tagName,
+              attachedBy: row.attachedBy,
+            });
+          }
+        }
+        bookmark.tags = [...tags.values()];
       });
     }
 

@@ -104,7 +104,10 @@ function createCollectionBookmarkContent({
   ctx: AuthedContext;
   bookmarkId: string;
   bookmarkIds: string[];
-}): ZBookmarkContent {
+}): {
+  content: ZBookmarkContent;
+  taggingStatus: "pending" | "success" | "failure" | null;
+} {
   const uniqueBookmarkIds = new Set(bookmarkIds);
   if (uniqueBookmarkIds.size !== bookmarkIds.length) {
     throw new TRPCError({
@@ -165,13 +168,36 @@ function createCollectionBookmarkContent({
     )
     .run();
 
+  const childTaggingStatuses = tx
+    .select({ taggingStatus: bookmarks.taggingStatus })
+    .from(bookmarks)
+    .where(inArray(bookmarks.id, bookmarkIds))
+    .all()
+    .map((bookmark) => bookmark.taggingStatus);
+  const collectionTaggingStatus = childTaggingStatuses.includes("pending")
+    ? "pending"
+    : childTaggingStatuses.includes("failure")
+      ? "failure"
+      : childTaggingStatuses.length > 0 &&
+          childTaggingStatuses.every((status) => status === "success")
+        ? "success"
+        : null;
+
+  tx.update(bookmarks)
+    .set({ taggingStatus: collectionTaggingStatus })
+    .where(eq(bookmarks.id, bookmarkId))
+    .run();
+
   return {
-    type: BookmarkTypes.COLLECTION,
-    items: orderedItems.map((item, index) => ({
-      bookmarkId: item.bookmarkId,
-      assetId: item.assetId,
-      position: index,
-    })),
+    content: {
+      type: BookmarkTypes.COLLECTION,
+      items: orderedItems.map((item, index) => ({
+        bookmarkId: item.bookmarkId,
+        assetId: item.assetId,
+        position: index,
+      })),
+    },
+    taggingStatus: collectionTaggingStatus,
   };
 }
 
@@ -547,12 +573,14 @@ export const bookmarksAppRouter = router({
               break;
             }
             case BookmarkTypes.COLLECTION: {
-              content = createCollectionBookmarkContent({
+              const collection = createCollectionBookmarkContent({
                 tx,
                 ctx,
                 bookmarkId: bookmark.id,
                 bookmarkIds: input.bookmarkIds,
               });
+              content = collection.content;
+              bookmark.taggingStatus = collection.taggingStatus;
               break;
             }
           }
