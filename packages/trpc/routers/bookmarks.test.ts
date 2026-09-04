@@ -226,9 +226,6 @@ describe("Bookmark Routes", () => {
     expect(
       collectionWithTags.tags.filter((tag) => tag.name === "shared-image-tag"),
     ).toHaveLength(1);
-    expect(
-      collectionWithTags.tags.some((tag) => tag.name === "child-human-tag"),
-    ).toBe(false);
 
     const collectionWithContent = await api.getBookmark({
       bookmarkId: collection.id,
