@@ -117,7 +117,9 @@ export function EditBookmarkDialog({
       {
         enabled: open && isCollection && !!selectedImageBookmarkId,
         select: (b) =>
-          b.content.type === BookmarkTypes.ASSET ? b.content.content : null,
+          b.content.type === BookmarkTypes.ASSET
+            ? { bookmarkId: b.id, content: b.content.content }
+            : null,
       },
     ),
   );
@@ -209,11 +211,15 @@ export function EditBookmarkDialog({
 
   // Update assetContent field when a new image is selected in a collection
   React.useEffect(() => {
-    if (!isCollection || selectedImageContent === undefined) {
+    if (
+      !isCollection ||
+      !selectedImageContent ||
+      selectedImageContent.bookmarkId !== selectedImageBookmarkId
+    ) {
       return;
     }
-    form.setValue("assetContent", selectedImageContent);
-  }, [form, isCollection, selectedImageContent]);
+    form.setValue("assetContent", selectedImageContent.content ?? "");
+  }, [form, isCollection, selectedImageBookmarkId, selectedImageContent]);
 
   const isLink = bookmark.content.type === BookmarkTypes.LINK;
   const isAsset = bookmark.content.type === BookmarkTypes.ASSET;
