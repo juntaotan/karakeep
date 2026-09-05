@@ -16,6 +16,7 @@ import {
 import { cn } from "@/lib/utils";
 import tailwindConfig from "@/tailwind.config";
 import { Slot } from "@radix-ui/react-slot";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ErrorBoundary } from "react-error-boundary";
 import { useInView } from "react-intersection-observer";
 import Masonry from "react-masonry-css";
@@ -27,6 +28,7 @@ import { BookmarkTypes } from "@karakeep/shared/types/bookmarks";
 
 import { useBookmarkListContext } from "@karakeep/shared-react/hooks/bookmark-list-context";
 import { useCreateBookmarkWithPostHook } from "@karakeep/shared-react/hooks/bookmarks";
+import { useTRPC } from "@karakeep/shared-react/trpc";
 import type { BookmarkMergeDragContextValue } from "./BookmarkMergeDragContext";
 import { BookmarkMergeDragProvider } from "./BookmarkMergeDragContext";
 
@@ -173,6 +175,8 @@ export default function BookmarksGrid({
   fetchNextPage?: () => void;
 }) {
   const { t } = useTranslation();
+  const api = useTRPC();
+  const queryClient = useQueryClient();
 
   const layout = useBookmarkLayout();
   const gridColumns = useGridColumns();
@@ -198,7 +202,7 @@ export default function BookmarksGrid({
     null,
   );
   // Send the confirmed merge request and keep the dialog open if it fails.
-  const { mutate: createMergeCollection, isPending: isMergePending } =
+  const { mutate: createMergeCollection, isPending: isCreatingCollection } =
     useCreateBookmarkWithPostHook({
       onSuccess: () => {
         setPendingMerge(null);
@@ -210,6 +214,26 @@ export default function BookmarksGrid({
         });
       },
     });
+  const { mutate: appendImage, isPending: isAppendingImage } = useMutation(
+    api.bookmarks.addImageCollectionItem.mutationOptions({
+      onSuccess: (_result, input) => {
+        queryClient.invalidateQueries(
+          api.bookmarks.getBookmark.queryFilter({
+            bookmarkId: input.bookmarkId,
+          }),
+        );
+        queryClient.invalidateQueries(api.bookmarks.getBookmarks.pathFilter());
+        queryClient.invalidateQueries(
+          api.bookmarks.searchBookmarks.pathFilter(),
+        );
+        setPendingMerge(null);
+      },
+      onError: (error) => {
+        toast({ description: error.message, variant: "destructive" });
+      },
+    }),
+  );
+  const isMergePending = isCreatingCollection || isAppendingImage;
   // For list/compact layouts, navigation is single-column
   const isListLayout = layout === "list" || layout === "compact";
   const navColumns = isListLayout ? 1 : activeGridColumns;
@@ -266,7 +290,11 @@ export default function BookmarksGrid({
       const source = findBookmarkById(activeSourceId);
       const target = findBookmarkById(bookmarkId);
 
-      return isMergeEligibleBookmark(source) && isMergeEligibleBookmark(target);
+      return (
+        isMergeEligibleBookmark(source) &&
+        (isMergeEligibleBookmark(target) ||
+          target?.content.type === BookmarkTypes.COLLECTION)
+      );
     },
     [activeSourceId, findBookmarkById],
   );
@@ -315,18 +343,32 @@ export default function BookmarksGrid({
       setPendingMerge(null);
     }
   }, []);
-  // Create an image collection after the user confirms a valid bookmark merge.
+  // Append to an existing collection or create one after confirmation.
   const handleMergeConfirm = useCallback(() => {
-    if (!pendingMerge) {
+    if (!pendingMerge || isMergePending) {
+      return;
+    }
+
+    const target = findBookmarkById(pendingMerge.targetId);
+    if (target?.content.type === BookmarkTypes.COLLECTION) {
+      appendImage({
+        bookmarkId: target.id,
+        itemBookmarkId: pendingMerge.sourceId,
+      });
       return;
     }
 
     createMergeCollection({
       type: BookmarkTypes.COLLECTION,
-      title: "2 images",
       bookmarkIds: [pendingMerge.sourceId, pendingMerge.targetId],
     });
-  }, [createMergeCollection, pendingMerge]);
+  }, [
+    appendImage,
+    createMergeCollection,
+    findBookmarkById,
+    isMergePending,
+    pendingMerge,
+  ]);
 
   const bookmarkMergeDragContextValue = useMemo<BookmarkMergeDragContextValue>(
     () => ({

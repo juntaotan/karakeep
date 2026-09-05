@@ -697,6 +697,86 @@ export const bookmarksAppRouter = router({
       return bookmark;
     }),
 
+  addImageCollectionItem: bookmarksProcedure
+    .input(z.object({ bookmarkId: z.string(), itemBookmarkId: z.string() }))
+    .output(zBookmarkSchema)
+    .use(ensureBookmarkOwnership)
+    .mutation(async ({ input, ctx }) => {
+      ctx.db.transaction(
+        (tx) => {
+          const collection = tx
+            .select()
+            .from(imageCollections)
+            .where(eq(imageCollections.id, input.bookmarkId))
+            .get();
+          if (!collection) {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: "Bookmark is not an image collection",
+            });
+          }
+
+          const image = tx
+            .select({ id: bookmarks.id })
+            .from(bookmarks)
+            .innerJoin(bookmarkAssets, eq(bookmarkAssets.id, bookmarks.id))
+            .where(
+              and(
+                eq(bookmarks.id, input.itemBookmarkId),
+                eq(bookmarks.userId, ctx.user.id),
+                eq(bookmarks.type, BookmarkTypes.ASSET),
+                eq(bookmarkAssets.assetType, "image"),
+              ),
+            )
+            .get();
+          if (!image) {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message:
+                "Collection items must be image asset bookmarks owned by the user",
+            });
+          }
+
+          const existingItem = tx
+            .select()
+            .from(imageCollectionItems)
+            .where(eq(imageCollectionItems.bookmarkId, input.itemBookmarkId))
+            .get();
+          if (existingItem) {
+            if (existingItem.collectionId === input.bookmarkId) return;
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: "Image already belongs to another collection",
+            });
+          }
+
+          const lastItem = tx
+            .select({ position: imageCollectionItems.position })
+            .from(imageCollectionItems)
+            .where(eq(imageCollectionItems.collectionId, input.bookmarkId))
+            .orderBy(sql`${imageCollectionItems.position} desc`)
+            .get();
+          tx.insert(imageCollectionItems)
+            .values({
+              collectionId: input.bookmarkId,
+              bookmarkId: input.itemBookmarkId,
+              position: (lastItem?.position ?? -1) + 1,
+            })
+            .run();
+          tx.update(imageCollections)
+            .set({ modifiedAt: new Date() })
+            .where(eq(imageCollections.id, input.bookmarkId))
+            .run();
+        },
+        { behavior: "immediate" },
+      );
+
+      await triggerSearchReindex(input.bookmarkId, { groupId: ctx.user.id });
+      return (
+        await Bookmark.fromId(ctx, input.bookmarkId, false)
+      ).asZBookmark();
+    }),
+
   reorderImageCollectionItems: bookmarksProcedure
     .input(
       z.object({
