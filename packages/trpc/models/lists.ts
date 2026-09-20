@@ -813,9 +813,63 @@ export abstract class List {
   }
 
   /**
-   * Add a collaborator to this list by email.
-   * Creates a pending invitation that must be accepted by the user.
-   * Returns the invitation ID.
+   * Step 2.1: Batch update collaborator permissions for target users across this list (and optionally its subtree).
+   * Supports targetRole: "viewer" | "editor" | "none" (none removes the collaborator).
+   */
+  async batchUpdateCollaboratorPermissions(
+    userIds: string[],
+    targetRole: "viewer" | "editor" | "none",
+    options?: { cascadeSubtree?: boolean },
+  ): Promise<{ affectedUserCount: number; affectedListIds: string[] }> {
+    this.ensureCanManage();
+
+    if (userIds.length === 0) {
+      return { affectedUserCount: 0, affectedListIds: [] };
+    }
+
+    const cascade = options?.cascadeSubtree ?? false;
+    let targetListIds = [this.list.id];
+
+    if (cascade) {
+      const subtreeRes = await List.calculateSubtreeEffectivePermissions(
+        this.ctx,
+        this.list.id,
+      );
+      targetListIds = subtreeRes.subtreeListIds;
+    }
+
+    if (targetRole === "none") {
+      // 撤销权限：从目标列表及子树中删除直接记录
+      await this.ctx.db
+        .delete(listCollaborators)
+        .where(
+          and(
+            inArray(listCollaborators.listId, targetListIds),
+            inArray(listCollaborators.userId, userIds),
+          ),
+        );
+    } else {
+      // 调整权限：更新目标列表及子树中的直接协作角色
+      await this.ctx.db
+        .update(listCollaborators)
+        .set({ role: targetRole })
+        .where(
+          and(
+            inArray(listCollaborators.listId, targetListIds),
+            inArray(listCollaborators.userId, userIds),
+          ),
+        );
+    }
+
+    return {
+      affectedUserCount: userIds.length,
+      affectedListIds: targetListIds,
+    };
+  }
+
+  /**
+   * Step 2.2: Add a collaborator by email with permission ceiling check.
+   * Default rule: child list permission cannot exceed its parent list's permission.
    */
   async addCollaboratorByEmail(
     email: string,
@@ -823,9 +877,35 @@ export abstract class List {
   ): Promise<string> {
     this.ensureCanManage();
 
+    let effectiveRole = role;
+
+    // 检查是否有父列表，若有，判断是否超越父级权限
+    if (this.list.parentId) {
+      const targetUser = await this.ctx.db.query.users.findFirst({
+        where: (users, { eq }) => eq(users.email, email),
+      });
+
+      if (targetUser) {
+        // 计算父列表上的有效权限
+        const parentSubtree = await List.calculateSubtreeEffectivePermissions(
+          this.ctx,
+          this.list.parentId,
+        );
+        const parentPerm = parentSubtree.effectivePermissionsMap.get(
+          `${targetUser.id}:${this.list.parentId}`,
+        );
+
+        // 如果父列表上该用户仅为 viewer，且尝试赋予 editor，则限制为 viewer（不超越上级权限）
+        if (parentPerm && parentPerm.role === "viewer" && role === "editor") {
+          // TODO: API notification for user confirmation when capping role
+          effectiveRole = "viewer";
+        }
+      }
+    }
+
     return await ListInvitation.inviteByEmail(this.ctx, {
       email,
-      role,
+      role: effectiveRole,
       listId: this.list.id,
       listName: this.list.name,
       listType: this.list.type,
@@ -836,23 +916,20 @@ export abstract class List {
   }
 
   /**
-   * Remove a collaborator from this list.
+   * Step 2.4: Remove a collaborator from this list and cascade to descendants.
    * Only the list owner can remove collaborators.
-   * This also removes all bookmarks that the collaborator added to the list.
    */
   async removeCollaborator(userId: string): Promise<void> {
     this.ensureCanManage();
 
-    const result = await this.ctx.db
-      .delete(listCollaborators)
-      .where(
-        and(
-          eq(listCollaborators.listId, this.list.id),
-          eq(listCollaborators.userId, userId),
-        ),
-      );
+    // 级联撤销子树权限
+    const { affectedListIds } = await this.batchUpdateCollaboratorPermissions(
+      [userId],
+      "none",
+      { cascadeSubtree: true },
+    );
 
-    if (result.changes === 0) {
+    if (affectedListIds.length === 0) {
       throw new TRPCError({
         code: "NOT_FOUND",
         message: "Collaborator not found",
@@ -892,7 +969,7 @@ export abstract class List {
   }
 
   /**
-   * Update a collaborator's role.
+   * Step 2.3: Update a collaborator's role and cascade downgrade to child lists.
    */
   async updateCollaboratorRole(
     userId: string,
@@ -914,6 +991,14 @@ export abstract class List {
       throw new TRPCError({
         code: "NOT_FOUND",
         message: "Collaborator not found",
+      });
+    }
+
+    // 若从 editor 降级为 viewer，子树中所有 editor 必须同步降级为 viewer（不超越父级）
+    if (role === "viewer") {
+      // TODO: API notification hook for user confirmation before cascading downgrade
+      await this.batchUpdateCollaboratorPermissions([userId], "viewer", {
+        cascadeSubtree: true,
       });
     }
   }

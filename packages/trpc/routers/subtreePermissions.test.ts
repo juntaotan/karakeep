@@ -165,20 +165,20 @@ describe("Subtree Permissions Calculation (Step 1)", () => {
       parentId: childList.id,
     });
 
-    // Share Parent as "viewer"
+    // Share Parent as "editor"
     await addAndAcceptCollaborator(
       ownerApi,
       collaboratorApi,
       parentList.id,
-      "viewer",
+      "editor",
     );
 
-    // Directly share Child as "editor"
+    // Directly share Child as "viewer"
     await addAndAcceptCollaborator(
       ownerApi,
       collaboratorApi,
       childList.id,
-      "editor",
+      "viewer",
     );
 
     const result = await List.calculateSubtreeEffectivePermissions(
@@ -189,26 +189,26 @@ describe("Subtree Permissions Calculation (Step 1)", () => {
     // Direct records should exist for both Parent and Child
     expect(
       result.directCollabMap.get(`${collaboratorId}:${parentList.id}`)?.role,
-    ).toBe("viewer");
+    ).toBe("editor");
     expect(
       result.directCollabMap.get(`${collaboratorId}:${childList.id}`)?.role,
-    ).toBe("editor");
+    ).toBe("viewer");
 
-    // Effective permission for Child must prioritize direct "editor" over inherited "viewer"
+    // Effective permission for Child must prioritize direct "viewer" over inherited "editor"
     const effectiveChild = result.effectivePermissionsMap.get(
       `${collaboratorId}:${childList.id}`,
     );
     expect(effectiveChild).toMatchObject({
-      role: "editor",
+      role: "viewer",
       source: "direct",
     });
 
-    // GrandChild should inherit the updated "editor" role from Child (proximity principle)
+    // GrandChild should inherit the updated "viewer" role from Child (proximity principle)
     const effectiveGrandChild = result.effectivePermissionsMap.get(
       `${collaboratorId}:${grandChildList.id}`,
     );
     expect(effectiveGrandChild).toMatchObject({
-      role: "editor",
+      role: "viewer",
       source: "inherited",
       sourceListId: childList.id,
     });
@@ -287,6 +287,202 @@ describe("Subtree Permissions Calculation (Step 1)", () => {
     ).toMatchObject({
       role: "editor",
       source: "direct",
+    });
+  });
+
+  describe("Granting and Enforcing Scoped Access (Step 2)", () => {
+    test<CustomTestContext>("Step 2.2: should cap child invitation role to viewer if parent role is viewer", async ({
+      apiCallers,
+      db,
+    }) => {
+      const ownerApi = apiCallers[0];
+      const collaboratorApi = apiCallers[1];
+
+      const collaboratorUser = await collaboratorApi.users.whoami();
+
+      // Parent List -> Child List
+      const parentList = await ownerApi.lists.create({
+        name: "Parent List",
+        icon: "📁",
+        type: "manual",
+      });
+
+      const childList = await ownerApi.lists.create({
+        name: "Child List",
+        icon: "📄",
+        type: "manual",
+        parentId: parentList.id,
+      });
+
+      // Share Parent as viewer
+      await addAndAcceptCollaborator(
+        ownerApi,
+        collaboratorApi,
+        parentList.id,
+        "viewer",
+      );
+
+      // Attempt to invite collaborator to Child as "editor"
+      const { invitationId } = await ownerApi.lists.addCollaborator({
+        listId: childList.id,
+        email: collaboratorUser.email!,
+        role: "editor",
+      });
+
+      // Accept invitation
+      await collaboratorApi.lists.acceptInvitation({ invitationId });
+
+      // Verify that the child list permission was capped to "viewer"
+      const subtreeRes = await List.calculateSubtreeEffectivePermissions(
+        { db },
+        parentList.id,
+      );
+      const childPerm = subtreeRes.directCollabMap.get(
+        `${collaboratorUser.id}:${childList.id}`,
+      );
+      expect(childPerm?.role).toBe("viewer");
+    });
+
+    test<CustomTestContext>("Step 2.3: should cascade downgrade child permissions when parent role is downgraded to viewer", async ({
+      apiCallers,
+      db,
+    }) => {
+      const ownerApi = apiCallers[0];
+      const collaboratorApi = apiCallers[1];
+
+      const collaboratorUser = await collaboratorApi.users.whoami();
+
+      // Parent List -> Child List
+      const parentList = await ownerApi.lists.create({
+        name: "Parent List",
+        icon: "📁",
+        type: "manual",
+      });
+
+      const childList = await ownerApi.lists.create({
+        name: "Child List",
+        icon: "📄",
+        type: "manual",
+        parentId: parentList.id,
+      });
+
+      // Both Parent and Child are initially shared as "editor"
+      await addAndAcceptCollaborator(
+        ownerApi,
+        collaboratorApi,
+        parentList.id,
+        "editor",
+      );
+      await addAndAcceptCollaborator(
+        ownerApi,
+        collaboratorApi,
+        childList.id,
+        "editor",
+      );
+
+      // Verify child is initially editor
+      let subtreeRes = await List.calculateSubtreeEffectivePermissions(
+        { db },
+        parentList.id,
+      );
+      expect(
+        subtreeRes.directCollabMap.get(
+          `${collaboratorUser.id}:${childList.id}`,
+        )?.role,
+      ).toBe("editor");
+
+      // Downgrade Parent to "viewer"
+      await ownerApi.lists.updateCollaboratorRole({
+        listId: parentList.id,
+        userId: collaboratorUser.id,
+        role: "viewer",
+      });
+
+      // Child list direct record should be cascaded to "viewer"
+      subtreeRes = await List.calculateSubtreeEffectivePermissions(
+        { db },
+        parentList.id,
+      );
+      expect(
+        subtreeRes.directCollabMap.get(
+          `${collaboratorUser.id}:${parentList.id}`,
+        )?.role,
+      ).toBe("viewer");
+      expect(
+        subtreeRes.directCollabMap.get(
+          `${collaboratorUser.id}:${childList.id}`,
+        )?.role,
+      ).toBe("viewer");
+    });
+
+    test<CustomTestContext>("Step 2.4: should cascade remove collaborator across entire subtree", async ({
+      apiCallers,
+      db,
+    }) => {
+      const ownerApi = apiCallers[0];
+      const collaboratorApi = apiCallers[1];
+
+      const collaboratorUser = await collaboratorApi.users.whoami();
+
+      // Parent List -> Child List
+      const parentList = await ownerApi.lists.create({
+        name: "Parent List",
+        icon: "📁",
+        type: "manual",
+      });
+
+      const childList = await ownerApi.lists.create({
+        name: "Child List",
+        icon: "📄",
+        type: "manual",
+        parentId: parentList.id,
+      });
+
+      // Add collaborator to both Parent and Child
+      await addAndAcceptCollaborator(
+        ownerApi,
+        collaboratorApi,
+        parentList.id,
+        "viewer",
+      );
+      await addAndAcceptCollaborator(
+        ownerApi,
+        collaboratorApi,
+        childList.id,
+        "viewer",
+      );
+
+      // Remove collaborator from Parent with cascading removal
+      await ownerApi.lists.removeCollaborator({
+        listId: parentList.id,
+        userId: collaboratorUser.id,
+      });
+
+      // Both Parent and Child direct records must be removed
+      const subtreeRes = await List.calculateSubtreeEffectivePermissions(
+        { db },
+        parentList.id,
+      );
+      expect(
+        subtreeRes.directCollabMap.has(
+          `${collaboratorUser.id}:${parentList.id}`,
+        ),
+      ).toBe(false);
+      expect(
+        subtreeRes.directCollabMap.has(
+          `${collaboratorUser.id}:${childList.id}`,
+        ),
+      ).toBe(false);
+      expect(
+        subtreeRes.effectivePermissionsMap.has(
+          `${collaboratorUser.id}:${parentList.id}`,
+        ),
+      ).toBe(false);
+      expect(
+        subtreeRes.effectivePermissionsMap.has(
+          `${collaboratorUser.id}:${childList.id}`,
+        ),
+      ).toBe(false);
     });
   });
 });
