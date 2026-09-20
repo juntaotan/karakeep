@@ -35,6 +35,30 @@ interface ListCollaboratorEntry {
   membershipId: string;
 }
 
+export interface DirectCollaboratorRecord {
+  listId: string;
+  userId: string;
+  role: "viewer" | "editor";
+  membershipId: string;
+}
+
+export interface InheritedCollaboratorRecord {
+  listId: string;
+  userId: string;
+  role: "viewer" | "editor";
+  sourceListId: string;
+  sourceMembershipId?: string;
+}
+
+export interface EffectiveCollaboratorPermission {
+  listId: string;
+  userId: string;
+  role: "viewer" | "editor";
+  source: "direct" | "inherited";
+  membershipId?: string;
+  sourceListId?: string;
+}
+
 export abstract class List {
   protected constructor(
     protected ctx: AuthedContext,
@@ -1085,6 +1109,229 @@ export abstract class List {
           },
         ),
     );
+  }
+
+  /**
+   * Calculate effective permissions for all candidate collaborators across a target subtree.
+   * Step 1:
+   * 1. directCollabMap: collect direct collaborator records in subtree, keyed by `${userId}:${listId}`.
+   * 2. candidateUserIds & inheritedCollabMap: collect candidate userIds before BFS, then during BFS record inherited permissions and their sources.
+   * 3. Merge: merge both by `${userId}:${listId}`, with direct permissions taking precedence.
+   */
+  static async calculateSubtreeEffectivePermissions(
+    ctx: { db: Context["db"] },
+    rootListId: string,
+  ): Promise<{
+    subtreeListIds: string[];
+    directCollabMap: Map<string, DirectCollaboratorRecord>;
+    candidateUserIds: Set<string>;
+    inheritedCollabMap: Map<string, InheritedCollaboratorRecord>;
+    effectivePermissionsMap: Map<string, EffectiveCollaboratorPermission>;
+  }> {
+    const rootList = await ctx.db.query.bookmarkLists.findFirst({
+      where: eq(bookmarkLists.id, rootListId),
+      columns: {
+        id: true,
+        userId: true,
+        parentId: true,
+      },
+    });
+
+    if (!rootList) {
+      return {
+        subtreeListIds: [],
+        directCollabMap: new Map(),
+        candidateUserIds: new Set(),
+        inheritedCollabMap: new Map(),
+        effectivePermissionsMap: new Map(),
+      };
+    }
+
+    const ownerLists = await ctx.db.query.bookmarkLists.findMany({
+      where: eq(bookmarkLists.userId, rootList.userId),
+      columns: {
+        id: true,
+        parentId: true,
+      },
+    });
+
+    const childIdsByParentId = new Map<string, string[]>();
+    for (const l of ownerLists) {
+      if (l.parentId) {
+        childIdsByParentId.set(l.parentId, [
+          ...(childIdsByParentId.get(l.parentId) ?? []),
+          l.id,
+        ]);
+      }
+    }
+
+    // Identify all lists in the subtree rooted at rootListId
+    const subtreeListIds: string[] = [];
+    const subtreeQueue = [rootListId];
+    const visitedSubtree = new Set<string>();
+
+    while (subtreeQueue.length > 0) {
+      const currId = subtreeQueue.shift()!;
+      if (visitedSubtree.has(currId)) continue;
+      visitedSubtree.add(currId);
+      subtreeListIds.push(currId);
+
+      const children = childIdsByParentId.get(currId) ?? [];
+      subtreeQueue.push(...children);
+    }
+
+    // 1. Current direct collaboration Map: collect direct collaborator records in subtree, keyed by `${userId}:${listId}`
+    const directCollaborators = await ctx.db.query.listCollaborators.findMany({
+      where: inArray(listCollaborators.listId, subtreeListIds),
+    });
+
+    const directCollabMap = new Map<string, DirectCollaboratorRecord>();
+    for (const c of directCollaborators) {
+      const key = `${c.userId}:${c.listId}`;
+      directCollabMap.set(key, {
+        listId: c.listId,
+        userId: c.userId,
+        role: c.role,
+        membershipId: c.id,
+      });
+    }
+
+    // 2. Candidate users: collect all unique userIds from these records before BFS
+    const candidateUserIds = new Set<string>();
+    for (const c of directCollaborators) {
+      candidateUserIds.add(c.userId);
+    }
+
+    // BFS to record inherited permissions and their sources for candidate users
+    const inheritedCollabMap = new Map<string, InheritedCollaboratorRecord>();
+
+    interface PropagationState {
+      listId: string;
+      userRoles: Map<
+        string,
+        {
+          role: "viewer" | "editor";
+          sourceListId: string;
+          sourceMembershipId?: string;
+        }
+      >;
+    }
+
+    const initialUserRoles = new Map<
+      string,
+      {
+        role: "viewer" | "editor";
+        sourceListId: string;
+        sourceMembershipId?: string;
+      }
+    >();
+
+    for (const userId of candidateUserIds) {
+      const direct = directCollabMap.get(`${userId}:${rootListId}`);
+      if (direct) {
+        initialUserRoles.set(userId, {
+          role: direct.role,
+          sourceListId: rootListId,
+          sourceMembershipId: direct.membershipId,
+        });
+      }
+    }
+
+    const bfsQueue: PropagationState[] = [
+      { listId: rootListId, userRoles: initialUserRoles },
+    ];
+    const bfsVisited = new Set<string>();
+
+    while (bfsQueue.length > 0) {
+      const { listId: currentListId, userRoles: currentUserRoles } =
+        bfsQueue.shift()!;
+      if (bfsVisited.has(currentListId)) continue;
+      bfsVisited.add(currentListId);
+
+      const children = childIdsByParentId.get(currentListId) ?? [];
+      for (const childId of children) {
+        const nextUserRoles = new Map(currentUserRoles);
+
+        for (const [userId, roleInfo] of currentUserRoles.entries()) {
+          // Record inherited permission and its source
+          const inheritedKey = `${userId}:${childId}`;
+          inheritedCollabMap.set(inheritedKey, {
+            listId: childId,
+            userId,
+            role: roleInfo.role,
+            sourceListId: roleInfo.sourceListId,
+            sourceMembershipId: roleInfo.sourceMembershipId,
+          });
+
+          // Proximity principle: if child list has direct authorization, propagate direct role to descendants
+          const childDirect = directCollabMap.get(`${userId}:${childId}`);
+          if (childDirect) {
+            nextUserRoles.set(userId, {
+              role: childDirect.role,
+              sourceListId: childId,
+              sourceMembershipId: childDirect.membershipId,
+            });
+          }
+        }
+
+        // Check if child list has any other direct collaborator who can propagate to deeper descendants
+        for (const userId of candidateUserIds) {
+          if (!nextUserRoles.has(userId)) {
+            const childDirect = directCollabMap.get(`${userId}:${childId}`);
+            if (childDirect) {
+              nextUserRoles.set(userId, {
+                role: childDirect.role,
+                sourceListId: childId,
+                sourceMembershipId: childDirect.membershipId,
+              });
+            }
+          }
+        }
+
+        bfsQueue.push({ listId: childId, userRoles: nextUserRoles });
+      }
+    }
+
+    // 3. Merge: merge both by `${userId}:${listId}`, with direct permissions taking precedence
+    const effectivePermissionsMap = new Map<
+      string,
+      EffectiveCollaboratorPermission
+    >();
+
+    for (const listId of subtreeListIds) {
+      for (const userId of candidateUserIds) {
+        const key = `${userId}:${listId}`;
+        const direct = directCollabMap.get(key);
+        const inherited = inheritedCollabMap.get(key);
+
+        if (direct) {
+          effectivePermissionsMap.set(key, {
+            listId,
+            userId,
+            role: direct.role,
+            source: "direct",
+            membershipId: direct.membershipId,
+          });
+        } else if (inherited) {
+          effectivePermissionsMap.set(key, {
+            listId,
+            userId,
+            role: inherited.role,
+            source: "inherited",
+            sourceListId: inherited.sourceListId,
+            membershipId: inherited.sourceMembershipId,
+          });
+        }
+      }
+    }
+
+    return {
+      subtreeListIds,
+      directCollabMap,
+      candidateUserIds,
+      inheritedCollabMap,
+      effectivePermissionsMap,
+    };
   }
 
   abstract get type(): "manual" | "smart";
