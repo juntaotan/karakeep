@@ -23,6 +23,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "@/components/ui/sonner";
+import { Switch } from "@/components/ui/switch";
 import { UserAvatar } from "@/components/ui/user-avatar";
 import { useTranslation } from "@/lib/i18n/client";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -61,7 +62,7 @@ export function ManageCollaboratorsModal({
   const [newCollaboratorRole, setNewCollaboratorRole] = useState<
     "viewer" | "editor"
   >("viewer");
-
+  const [includeSublists, setIncludeSublists] = useState(true);
   const { t } = useTranslation();
   const queryClient = useQueryClient();
 
@@ -98,6 +99,7 @@ export function ManageCollaboratorsModal({
           description: t("lists.collaborators.invitation_sent"),
         });
         setNewCollaboratorEmail("");
+        setIncludeSublists(true);
         await invalidateListCaches();
       },
       onError: (error) => {
@@ -182,8 +184,11 @@ export function ManageCollaboratorsModal({
   return (
     <Dialog
       open={open}
-      onOpenChange={(s) => {
-        setOpen(s);
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) {
+          setIncludeSublists(true);
+        }
+        setOpen(nextOpen);
       }}
     >
       {children && <DialogTrigger asChild>{children}</DialogTrigger>}
@@ -253,6 +258,28 @@ export function ManageCollaboratorsModal({
                   )}
                 </Button>
               </div>
+
+              {list.type === "manual" && (
+                <div className="flex items-center justify-between rounded-lg border border-border/50 bg-muted/50 p-4">
+                  <div className="space-y-1">
+                    <Label
+                      htmlFor="include-sublists"
+                      className="cursor-pointer text-sm font-medium"
+                    >
+                      {t("lists.collaborators.include_sublists")}
+                    </Label>
+                    <p className="text-xs text-muted-foreground">
+                      {t("lists.collaborators.include_sublists_description")}
+                    </p>
+                  </div>
+                  <Switch
+                    id="include-sublists"
+                    checked={includeSublists}
+                    onCheckedChange={setIncludeSublists}
+                  />
+                </div>
+              )}
+
               <p className="text-xs text-muted-foreground">
                 <strong>{t("lists.collaborators.viewer")}:</strong>{" "}
                 {t("lists.collaborators.viewer_description")}

@@ -857,6 +857,8 @@
       "declined": "Declined",
       "viewer_description": "Can view bookmarks in the list",
       "editor_description": "Can add and remove bookmarks",
+      "include_sublists": "Include sublists",
+      "include_sublists_description": "Share existing eligible sublists and sublists created or moved here later.",
       "no_collaborators": "No collaborators yet. Add someone to start collaborating!",
       "no_collaborators_readonly": "No collaborators for this list.",
       "people_with_access": "People who have access to this list",
