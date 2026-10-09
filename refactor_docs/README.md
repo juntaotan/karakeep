@@ -27,6 +27,8 @@ All F01–F11 review principles are confirmed in the [design ledger](design-conf
 
 All project-authored prompt and agent files must use English, including this directory's rules, context, design ledger and future session records. Translate recorded non-English instructions faithfully and identify them as translations. Preserve approval meaning and factual status. Follow the [language requirement](agent-rules/core-migration.md).
 
+Every real session's saved and user-facing report must include separate actual start and end timestamps with time sources. Capture the start at session startup and the end at closure; use UTC ISO 8601 in saved records, and document unavailable recovered timestamps rather than inventing them. See [mandatory session timestamps](agent-rules/session-records.md#mandatory-session-start-and-end-timestamps).
+
 These instructions govern authorised migration investigation, implementation, verification, recovery and integration in the candidate checkout. A documentation review or an explicitly authorised correction to these design documents does not start Python development, initialise candidate migration progress or authorise production integration. Such document corrections may be made in the current documentation checkout within their approved scope; application code, tests, dependencies, runtime configuration and original operational data remain protected during isolated development.
 
 ## Approved Implementation Sequence

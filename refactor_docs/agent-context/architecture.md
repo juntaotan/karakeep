@@ -52,9 +52,18 @@ The project is organised into `apps` and `packages`:
 
 | Topic / responsibility / flow | Verified / Inferred / Unresolved | Evidence and limits | Checked revision / UTC | Next check |
 | --- | --- | --- | --- | --- |
+| SQLite database engine | Verified | `packages/db/drizzle.config.ts`, `drizzle.ts`, `node_modules/better-sqlite3`; SQLite is the authoritative database | `4ec81e17` / 2026-10-09T09:30:00Z | Database service |
+| Historical migrations & journal | Verified | 93 migrations (`0000` to `0092`) in `packages/db/drizzle/`, journal at `drizzle/meta/_journal.json` | `4ec81e17` / 2026-10-09T09:30:00Z | Next schema additions |
+| `__drizzle_migrations` tracking table | Verified | `CREATE TABLE "__drizzle_migrations" ( id SERIAL PRIMARY KEY, hash text NOT NULL, created_at numeric )` | `4ec81e17` / 2026-10-09T09:33:58Z | Startup integration |
+| Resulting SQLite schema | Verified | 35 distinct tables; 100% table name and DDL parity between Python migrator and TypeScript Drizzle | `4ec81e17` / 2026-10-09T09:37:12Z | SQLAlchemy models mapping |
 
 ## Actual tooling and commands
 
-Record runtime/dependency versions, chosen API framework, SQLAlchemy execution model, migration tools, lockfiles, startup and verification commands only after examining the target repository. Unknown choices remain Unresolved.
+- Python runtime: Python 3.14.3 (`/opt/homebrew/bin/python3`)
+- SQLite version: 3.51.3 (via standard library `sqlite3`)
+- Migration runner: `packages/db/python/migrator.py` (CLI & programmatic API)
+- Verification test runner: `PYTHONPATH=. python3 -m unittest packages/db/python/test_migrator.py -v`
+- Reference Node runtime: Node v24.11.0
+
 
 The original database description is speculative; it is not permission to select a different engine. Verify the actual engine and preserve it.

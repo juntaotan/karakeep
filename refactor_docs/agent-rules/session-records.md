@@ -4,6 +4,17 @@
 
 Each completed or early-ended real session produces one independent structured record at `refactor_docs/agent-context/sessions/session-YYYYMMDD-HHMMSS.md` in the candidate checkout, using its start timestamp in UTC. Add a unique suffix on collision; never overwrite another record. Include actual start/end times and the previous relevant session when known. Use None for a first session and Unknown when recovery evidence is missing.
 
+## Mandatory session start and end timestamps
+
+The user explicitly requires every session report to record both its start time and its end time as separate fields. This applies to completed, partial, investigation, verification, integration, recovery and early-ended reports, including sessions stopped for a human dependency.
+
+- Capture `Started at UTC` from a reliable clock when the real session begins, and persist it with its time source in the active handover before session work. Keep this original start through continuing chat turns or context compaction.
+- Capture `Ended at UTC` from a reliable clock when closing or stopping the session after its work/checks, and include it with its time source in the final report. Do not use a command completion time or the report filename as a substitute. While active, the handover may say `Ended at UTC: In progress`; a final report must not leave that field blank or In progress.
+- Use UTC ISO 8601 (`YYYY-MM-DDTHH:MM:SSZ`) with the precision actually available. Start and end sources must be recorded independently when they differ.
+- If abrupt termination or missing historical evidence prevents establishing either timestamp, keep both fields present, mark the missing value `Unknown`, and explain the evidence gap in the recovery report. Never reconstruct an exact time from an unrelated current clock reading. Ordinary sessions must capture both actual timestamps rather than use Unknown as a shortcut.
+- Include both timestamps in any user-facing session completion/early-stop report as well as the saved session record. Any displayed local time must identify its timezone; the saved UTC timestamps remain authoritative.
+- Before marking the handover Complete, check that the saved report contains both timestamps and their sources, or an explicitly documented recovery gap. Session end is not proof that the task or all commands completed.
+
 Completed records are append-only. Document later corrections in a subsequent record referencing the original finding. Preserve meaningful technical history, not complete conversations/tool transcripts. Keep full experiment/evaluation artefacts separately. Maintain context and session history under Git version control according to project policy.
 
 ## Command timing
@@ -36,7 +47,11 @@ Use this structure, marking empty sections None or Not applicable. Populate it o
 
 ## Session Metadata
 - Session ID:
-- Started / Ended at UTC:
+- Started at UTC:
+- Start Time Source:
+- Ended at UTC:
+- End Time Source:
+- Timestamp Evidence Gaps: None
 - Session Kind: Development / Investigation / Integration / Verification / Recovery
 - Previous Relevant Session:
 - Recovered Interrupted Session ID (if known):
@@ -100,6 +115,8 @@ Use this structure, marking empty sections None or Not applicable. Populate it o
 ## Latest handover
 
 Keep session-handover.md concise: current objective and actual status; significant completed work; remaining implementation/integration/verification; unresolved issues/dependencies; concrete recommended next actions; source and session-record references. Include the active ID, available baseline, loaded rules, and the previous completed record while work is active.
+
+Keep the session's start timestamp/time source in the active handover. At closure, retain both start and end timestamps/time sources alongside the final record reference.
 
 While active, preserve the command timestamps/time sources and concise file ledger at meaningful milestones. At closure, link the final record for full per-file purposes and counts; do not duplicate its entire table into the handover.
 

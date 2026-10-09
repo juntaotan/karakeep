@@ -18,7 +18,7 @@ At the first opportunity when a task instruction arrives, record its ID/summary 
    Before the first edit, capture a task-relevant start baseline, including pre-existing dirty/untracked files. Retain enough before/after evidence to distinguish this session's changes, especially when editing an already-dirty file; HEAD-to-current diff alone does not establish session ownership.
 3. Check the handover state, active session ID, previous completed record, and recorded baseline. A missing/stale handover, incomplete marker, missing referenced record, or conflicting evidence requires reconciliation. Repository changes alone do not prove interruption.
 4. Load task-relevant architecture, decisions, issues, and selected history. Context never substitutes for current code inspection.
-5. Allocate a unique UTC ID using the real session start time: `session-YYYYMMDD-HHMMSS`, with a unique suffix if needed. Mark the handover Active / Incomplete with the objective, loaded rules, current baseline, and next action; retain the prior completed record reference.
+5. Capture the actual session start from a reliable clock and persist `Started at UTC` and `Start Time Source`; use that start for the unique `session-YYYYMMDD-HHMMSS` ID, with a unique suffix if needed. Mark the handover Active / Incomplete with `Ended at UTC: In progress`, the objective, loaded rules, current baseline, and next action; retain the prior completed record reference. Do not defer start-time capture until closure or reset it for a continuing turn/context compaction.
 6. Check the current step and carried-over human dependencies using [human-intervention.md](human-intervention.md). If the step is Paused — Awaiting Human, resume development only after the required answer/resource/approval exists and is applicable; otherwise preserve/report the waiting state and stop development without switching to another implementation task or duplicating an unchanged request.
 
 ## First-session initialisation
@@ -48,8 +48,8 @@ Before treating a blocker as a human dependency, follow [human-intervention.md](
 Read [session-records.md](session-records.md) before closing. Persist in this order:
 
 1. Update affected current-state context with actual results and evidence.
-2. Reconcile the file ledger against the start baseline and actual final changes. Create a unique final session record with command times, time sources, deduplicated file counts, each file's purpose, actual task status and next actions.
-3. Update session-handover.md to link that record and mark Handover State Complete only after persistence succeeds.
+2. Reconcile the file ledger against the start baseline and actual final changes. Capture the actual end from a reliable clock at session closure. Create a unique final session record with separate `Started at UTC` and `Ended at UTC` fields and their time sources, command times, deduplicated file counts, each file's purpose, actual task status and next actions. Follow the documented Unknown/evidence-gap rule only for genuinely unavailable recovered timestamps.
+3. Check that both session timestamp fields are present and supported, retain them in session-handover.md with the record link, and mark Handover State Complete only after persistence succeeds. Include the same start/end times in the user-facing completion or early-stop report.
 
 Task status is Completed, Partial, Blocked, or Investigation Only. A Complete handover may describe a Partial or Blocked task. If writing fails, report the failure and leave recoverable state; do not claim a complete handover.
 

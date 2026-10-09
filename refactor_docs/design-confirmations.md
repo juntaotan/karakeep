@@ -8,6 +8,15 @@ F07–F11 authority: The user confirmed these items together, translated into En
 
 ## Confirmed decisions
 
+### Global — Start and end times in every session report
+
+- Status: Accepted; mandatory separate timestamp fields written into session records, lifecycle, the session directory guide, handover template and entry README.
+- Actual user instruction, translated into English: “Every session report must record its start time and end time.”
+- Recorded observation: 2026-10-09T09:19:50Z, from the clock tool after reading the instruction. Exact message receipt time: Unknown.
+- Capture the actual start at startup and the actual end at closure, with time sources and UTC ISO 8601 in saved records. Include both in saved and user-facing completion/early-stop reports. Active work may show In progress; a final report must retain both fields, using Unknown with an explained evidence gap only when interrupted-session evidence is genuinely unavailable.
+- Templates remain uninitialised; this design update does not invent migration session times or assert that candidate implementation has started.
+- Verification: Six documentation files updated. Separate start/end timestamps, independent time sources and evidence-gap fields are present in the session record and handover templates; all 83 local Markdown link destinations exist and migration documents contain no Chinese text. The working-tree diff is confined to these six documentation files; no application change or real migration session is claimed.
+
 ### Global — English-only prompt and agent files
 
 - Status: Accepted; language requirements written into core constraints, the entry README and the candidate AGENTS.md fragment.

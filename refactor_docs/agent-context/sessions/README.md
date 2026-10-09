@@ -7,6 +7,7 @@ For the entry point and installation procedure, read [the migration README](../.
 ## Naming and evidence
 
 - Allocate `session-YYYYMMDD-HHMMSS.md` from the actual session start in UTC; add a unique suffix on collision.
+- Every saved and user-facing session report must include separate start and end timestamps with time sources. Capture the start when the session begins and the end at closure, using UTC ISO 8601. Final reports must not leave either field blank; unavailable interrupted-session timestamps require Unknown plus an evidence-gap explanation under the session record rules.
 - Preserve existing completed records. Put later corrections in a new record with a reference to the earlier evidence.
 - Record Unknown when message receipt times, historical baselines or change attribution are unavailable. Do not invent earlier sessions, completed commands or passing checks.
 - Keep implementation completion, verification results, component migration status and handover persistence separate.
